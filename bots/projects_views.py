@@ -49,6 +49,7 @@ from .models import (
     Project,
     ProjectAccess,
     Recording,
+    RecordingFormats,
     RecordingStates,
     RecordingTranscriptionStates,
     RecordingTypes,
@@ -1493,6 +1494,24 @@ class CreateBotView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                 "meeting_url": request.POST.get("meeting_url"),
                 "bot_name": request.POST.get("bot_name") or "Meeting Bot",
             }
+
+            recording_format = request.POST.get("recording_format") or RecordingFormats.MP4
+            additional_files = request.POST.getlist("additional_files") if recording_format == RecordingFormats.MP4 else []
+            if recording_format != RecordingFormats.MP4 or additional_files:
+                data["recording_settings"] = {"format": recording_format}
+                if additional_files:
+                    data["recording_settings"]["additional_files"] = additional_files
+
+            if request.POST.get("transcription_provider") == "elevenlabs":
+                elevenlabs_model_id = request.POST.get("elevenlabs_model_id") or "scribe_v2"
+                elevenlabs_settings = {
+                    "model_id": elevenlabs_model_id,
+                    "tag_audio_events": request.POST.get("elevenlabs_tag_audio_events") == "on",
+                }
+                # no_verbatim is only supported by scribe_v2
+                if elevenlabs_model_id == "scribe_v2" and request.POST.get("elevenlabs_no_verbatim") == "on":
+                    elevenlabs_settings["no_verbatim"] = True
+                data["transcription_settings"] = {"elevenlabs": elevenlabs_settings}
 
             bot, error = create_bot(data=data, source=BotCreationSource.DASHBOARD, project=project)
             if error:

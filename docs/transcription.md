@@ -60,6 +60,8 @@ Closed caption-based transcription is free.
 
 For third-party-based transcription, you need to add your API Key for a provider like Deepgram, OpenAI, Gladia, Assembly AI, or ElevenLabs in the Settings > Credentials page.
 
+When creating a bot from the dashboard, the Create Bot form lets you choose between the platform default (closed captions for Google Meet and Teams, Deepgram for Zoom) and ElevenLabs. The form shows the equivalent API request, so you can copy it for use with the API.
+
 ## Transcription errors
 
 If you are using third-party-based transcription, you may encounter errors from the transcription provider. These errors are visible in the bot detail page in the dashboard, in the transcription section.

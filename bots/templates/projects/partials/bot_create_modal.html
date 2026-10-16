@@ -21,7 +21,57 @@
                         <input type="text" class="form-control" id="id_bot_name" name="bot_name" value="Meeting Bot">
                         <div class="form-text">A friendly name for this bot</div>
                     </div>
-                    
+
+                    <div class="mb-3">
+                        <label for="id_recording_format" class="form-label">Recording</label>
+                        <select class="form-select" id="id_recording_format" name="recording_format">
+                            <option value="mp4" selected>Video and audio (MP4)</option>
+                            <option value="mp3">Audio only (MP3)</option>
+                            <option value="none">No recording (transcript only)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="additionalFilesGroup">
+                        <label class="form-label">Also save</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="id_additional_files_audio_only" name="additional_files" value="audio_only">
+                            <label class="form-check-label" for="id_additional_files_audio_only">Audio only (MP3)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="id_additional_files_video_only" name="additional_files" value="video_only">
+                            <label class="form-check-label" for="id_additional_files_video_only">Video only, without audio (MP4)</label>
+                        </div>
+                        <div class="form-text">Created from the recording after the meeting ends</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_transcription_provider" class="form-label">Transcription</label>
+                        <select class="form-select" id="id_transcription_provider" name="transcription_provider">
+                            <option value="default" selected>Platform default (Meet / Teams captions, Deepgram for Zoom)</option>
+                            <option value="elevenlabs">ElevenLabs</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 ps-3 border-start d-none" id="elevenlabsSettingsGroup">
+                        <div class="mb-2">
+                            <label for="id_elevenlabs_model_id" class="form-label">Model</label>
+                            <select class="form-select" id="id_elevenlabs_model_id" name="elevenlabs_model_id">
+                                <option value="scribe_v2" selected>scribe_v2</option>
+                                <option value="scribe_v1">scribe_v1</option>
+                                <option value="scribe_v1_experimental">scribe_v1_experimental</option>
+                            </select>
+                            <div class="form-text">The language is detected automatically. Requires an ElevenLabs key in Settings → Credentials.</div>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="id_elevenlabs_no_verbatim" name="elevenlabs_no_verbatim" checked>
+                            <label class="form-check-label" for="id_elevenlabs_no_verbatim">Remove filler words and non-speech sounds (scribe_v2 only)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="id_elevenlabs_tag_audio_events" name="elevenlabs_tag_audio_events">
+                            <label class="form-check-label" for="id_elevenlabs_tag_audio_events">Tag audio events like [laughter]</label>
+                        </div>
+                    </div>
+
                     <div id="formErrors" class="alert alert-danger d-none"></div>
                 </form>
                 
@@ -132,33 +182,79 @@
         const codeBlock = document.getElementById('apiCodeExample');
         
         if (meetingUrlField && botNameField && codeBlock) {
+            const recordingFormatField = document.getElementById('id_recording_format');
+            const additionalFilesGroup = document.getElementById('additionalFilesGroup');
+            const additionalFileFields = additionalFilesGroup.querySelectorAll('input[name="additional_files"]');
+            const transcriptionProviderField = document.getElementById('id_transcription_provider');
+            const elevenlabsSettingsGroup = document.getElementById('elevenlabsSettingsGroup');
+            const elevenlabsModelField = document.getElementById('id_elevenlabs_model_id');
+            const elevenlabsNoVerbatimField = document.getElementById('id_elevenlabs_no_verbatim');
+            const elevenlabsTagAudioEventsField = document.getElementById('id_elevenlabs_tag_audio_events');
+
+            // Build the same request body that the dashboard sends to create the bot
+            function buildRequestData() {
+                const data = {
+                    meeting_url: meetingUrlField.value || 'https://zoom.us/j/123?pwd=456',
+                    bot_name: botNameField.value || 'My Bot',
+                };
+
+                const recordingFormat = recordingFormatField.value;
+                const additionalFiles = recordingFormat === 'mp4' ? Array.from(additionalFileFields).filter(field => field.checked).map(field => field.value) : [];
+                if (recordingFormat !== 'mp4' || additionalFiles.length > 0) {
+                    data.recording_settings = { format: recordingFormat };
+                    if (additionalFiles.length > 0) {
+                        data.recording_settings.additional_files = additionalFiles;
+                    }
+                }
+
+                if (transcriptionProviderField.value === 'elevenlabs') {
+                    const elevenlabs = {
+                        model_id: elevenlabsModelField.value,
+                        tag_audio_events: elevenlabsTagAudioEventsField.checked,
+                    };
+                    if (elevenlabsModelField.value === 'scribe_v2' && elevenlabsNoVerbatimField.checked) {
+                        elevenlabs.no_verbatim = true;
+                    }
+                    data.transcription_settings = { elevenlabs: elevenlabs };
+                }
+
+                return data;
+            }
+
+            // Show only the options that apply to the current choices
+            function updateFieldVisibility() {
+                additionalFilesGroup.classList.toggle('d-none', recordingFormatField.value !== 'mp4');
+                elevenlabsSettingsGroup.classList.toggle('d-none', transcriptionProviderField.value !== 'elevenlabs');
+                elevenlabsNoVerbatimField.disabled = elevenlabsModelField.value !== 'scribe_v2';
+            }
+
             // Function to update the curl command
             function updateCurlCommand() {
-                const meetingUrl = meetingUrlField.value || 'https://zoom.us/j/123?pwd=456';
-                const botName = botNameField.value || 'My Bot';
+                updateFieldVisibility();
                 const currentHost = window.location.origin;
-                
-                // Create properly formatted curl command  
+                const body = JSON.stringify(buildRequestData(), null, 2).split('\n').map(line => `  ${line}`).join('\n').trimStart();
+
+                // Create properly formatted curl command
                 const lines = [
                     `curl ${currentHost}/api/v1/bots \\`,
                     `  --request POST \\`,
                     `  --header 'Authorization: Token YOUR_API_KEY_HERE' \\`,
                     `  --header 'Content-Type: application/json' \\`,
-                    `  --data '{`,
-                    `    "meeting_url": "${meetingUrl}",`,
-                    `    "bot_name": "${botName}"`,
-                    `  }'`
+                    `  --data '${body}'`
                 ];
-                
+
                 const curlCommand = lines.join('\n');
-                
+
                 // Ensure proper formatting is maintained
                 codeBlock.textContent = curlCommand;
             }
-            
+
             // Add event listeners to form fields
             meetingUrlField.addEventListener('input', updateCurlCommand);
             botNameField.addEventListener('input', updateCurlCommand);
+            [recordingFormatField, transcriptionProviderField, elevenlabsModelField, elevenlabsNoVerbatimField, elevenlabsTagAudioEventsField, ...additionalFileFields].forEach(field => {
+                field.addEventListener('change', updateCurlCommand);
+            });
             
             // Set initial value with proper formatting
             updateCurlCommand();

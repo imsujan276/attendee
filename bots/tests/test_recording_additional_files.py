@@ -2,12 +2,13 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
+from django.test import Client, TestCase
+from django.urls import reverse
 
-from accounts.models import Organization
+from accounts.models import Organization, User, UserRole
 from bots.bot_controller.bot_controller import BotController
 from bots.bots_api_utils import BotCreationSource, create_bot
-from bots.models import Project
+from bots.models import Bot, Project, Recording
 from bots.serializers import RecordingSerializer
 
 
@@ -135,3 +136,56 @@ class TestSaveAdditionalRecordingFiles(TestCase):
 
         self.recording.refresh_from_db()
         self.assertEqual(self.recording.audio_only_file.name, "")
+
+
+@patch("bots.projects_views.launch_adhoc_bot_from_view")
+class TestCreateBotViewOptions(TestCase):
+    def setUp(self):
+        organization = Organization.objects.create(name="Test Organization", centicredits=10000)
+        self.user = User.objects.create_user(username="admin", email="admin@example.com", password="testpassword123", role=UserRole.ADMIN, organization=organization)
+        self.project = Project.objects.create(name="Test Project", organization=organization)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def post_create_bot(self, data):
+        return self.client.post(reverse("bots:create-bot", kwargs={"object_id": self.project.object_id}), {"meeting_url": "https://meet.google.com/abc-defg-hij", "bot_name": "Test Bot", **data})
+
+    def test_default_form_keeps_default_settings(self, mock_launch):
+        response = self.post_create_bot({"recording_format": "mp4", "transcription_provider": "default"})
+        self.assertEqual(response.status_code, 200)
+
+        bot = Bot.objects.get(project=self.project)
+        self.assertEqual(bot.recording_format(), "mp4")
+        self.assertEqual(bot.recording_additional_files(), [])
+        self.assertEqual(bot.settings["transcription_settings"], {"meeting_closed_captions": {}})
+
+    def test_recording_format_and_additional_files(self, mock_launch):
+        response = self.post_create_bot({"recording_format": "mp4", "additional_files": ["audio_only", "video_only"]})
+        self.assertEqual(response.status_code, 200)
+
+        bot = Bot.objects.get(project=self.project)
+        self.assertEqual(bot.recording_format(), "mp4")
+        self.assertEqual(bot.recording_additional_files(), ["audio_only", "video_only"])
+
+    def test_additional_files_ignored_for_audio_only_recording(self, mock_launch):
+        response = self.post_create_bot({"recording_format": "mp3", "additional_files": ["video_only"]})
+        self.assertEqual(response.status_code, 200)
+
+        bot = Bot.objects.get(project=self.project)
+        self.assertEqual(bot.recording_format(), "mp3")
+        self.assertEqual(bot.recording_additional_files(), [])
+
+    def test_elevenlabs_transcription(self, mock_launch):
+        response = self.post_create_bot({"transcription_provider": "elevenlabs", "elevenlabs_model_id": "scribe_v2", "elevenlabs_no_verbatim": "on"})
+        self.assertEqual(response.status_code, 200)
+
+        bot = Bot.objects.get(project=self.project)
+        self.assertEqual(bot.settings["transcription_settings"], {"elevenlabs": {"model_id": "scribe_v2", "tag_audio_events": False, "no_verbatim": True}})
+        self.assertEqual(Recording.objects.get(bot=bot).get_transcription_provider_display(), "ElevenLabs")
+
+    def test_no_verbatim_only_sent_for_scribe_v2(self, mock_launch):
+        response = self.post_create_bot({"transcription_provider": "elevenlabs", "elevenlabs_model_id": "scribe_v1", "elevenlabs_no_verbatim": "on", "elevenlabs_tag_audio_events": "on"})
+        self.assertEqual(response.status_code, 200)
+
+        bot = Bot.objects.get(project=self.project)
+        self.assertEqual(bot.settings["transcription_settings"], {"elevenlabs": {"model_id": "scribe_v1", "tag_audio_events": True}})
