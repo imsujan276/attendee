@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import threading
 import time
 import traceback
@@ -49,6 +50,7 @@ from bots.models import (
     ParticipantEventTypes,
     RealtimeTriggerTypes,
     Recording,
+    RecordingAdditionalFiles,
     RecordingFormats,
     RecordingManager,
     RecordingTypes,
@@ -656,11 +658,12 @@ class BotController:
         except Exception as e:
             logger.exception(f"Error uploading recording to external media storage bucket {self.bot_in_db.external_media_storage_bucket_name()}: {e}")
 
-    def get_file_uploader(self):
+    def get_file_uploader(self, filename=None):
+        filename = filename or self.get_recording_filename()
         if settings.STORAGE_PROTOCOL == "azure":
             return AzureFileUploader(
                 container=settings.AZURE_RECORDING_STORAGE_CONTAINER_NAME,
-                filename=self.get_recording_filename(),
+                filename=filename,
                 connection_string=settings.RECORDING_STORAGE_BACKEND.get("OPTIONS").get("connection_string"),
                 account_key=settings.RECORDING_STORAGE_BACKEND.get("OPTIONS").get("account_key"),
                 account_name=settings.RECORDING_STORAGE_BACKEND.get("OPTIONS").get("account_name"),
@@ -668,7 +671,7 @@ class BotController:
 
         return S3FileUploader(
             bucket=settings.AWS_RECORDING_STORAGE_BUCKET_NAME,
-            filename=self.get_recording_filename(),
+            filename=filename,
             endpoint_url=settings.RECORDING_STORAGE_BACKEND.get("OPTIONS").get("endpoint_url"),
         )
 
@@ -731,6 +734,8 @@ class BotController:
 
         if self.get_recording_file_location():
             self.upload_recording_to_external_media_storage_if_enabled()
+
+            self.save_additional_recording_files()
 
             logger.info("Telling file uploader to upload recording file...")
             file_uploader = self.get_file_uploader()
@@ -1775,6 +1780,50 @@ class BotController:
         if self.audio_chunk_uploader:
             logger.info("Flushing audio chunk uploads...")
             self.audio_chunk_uploader.wait_for_uploads()
+
+    def save_additional_recording_files(self):
+        try:
+            self.save_additional_recording_files_with_no_error_handling()
+        except Exception:
+            logger.exception("Error saving additional recording files")
+
+    def save_additional_recording_files_with_no_error_handling(self):
+        additional_files = self.bot_in_db.recording_additional_files()
+        if not additional_files:
+            return
+
+        recording_file_location = self.get_recording_file_location()
+        if not os.path.exists(recording_file_location):
+            logger.info(f"Recording file at {recording_file_location} does not exist, not saving additional files")
+            return
+
+        recording = Recording.objects.get(bot=self.bot_in_db, is_default_recording=True)
+        for additional_file in additional_files:
+            if additional_file == RecordingAdditionalFiles.AUDIO_ONLY:
+                filename = f"{self.bot_in_db.object_id}-{recording.object_id}-audio.mp3"
+                ffmpeg_args = ["-vn", "-c:a", "libmp3lame", "-q:a", "2"]
+                file_field_name = "audio_only_file"
+            elif additional_file == RecordingAdditionalFiles.VIDEO_ONLY:
+                filename = f"{self.bot_in_db.object_id}-{recording.object_id}-video.mp4"
+                ffmpeg_args = ["-an", "-c:v", "copy"]
+                file_field_name = "video_only_file"
+            else:
+                logger.warning(f"Unknown additional recording file type {additional_file}, skipping")
+                continue
+
+            output_file_location = os.path.join(self.get_recording_storage_directory(), filename)
+            logger.info(f"Creating additional recording file {filename}...")
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", recording_file_location, *ffmpeg_args, output_file_location], check=True)
+
+            file_uploader = self.get_file_uploader(filename=filename)
+            file_uploader.upload_file(output_file_location)
+            file_uploader.wait_for_upload()
+            file_uploader.delete_file(output_file_location)
+
+            recording = Recording.objects.get(bot=self.bot_in_db, is_default_recording=True)
+            setattr(recording, file_field_name, filename)
+            recording.save()
+            logger.info(f"Saved additional recording file {filename}")
 
     def save_debug_recording(self):
         try:

@@ -33,6 +33,16 @@
                                     Your browser does not support the video tag.
                                 </video>
                                 {% include 'projects/partials/project_bot_recording_speaker_timeline.html' with speaker_timeline=recording.speaker_timeline %}
+                                <div class="small mt-2">
+                                    Download:
+                                    <a href="{{ recording.url }}" target="_blank" rel="noopener noreferrer">Recording</a>
+                                    {% if recording.audio_only_url %}
+                                        · <a href="{{ recording.audio_only_url }}" target="_blank" rel="noopener noreferrer">Audio only (MP3)</a>
+                                    {% endif %}
+                                    {% if recording.video_only_url %}
+                                        · <a href="{{ recording.video_only_url }}" target="_blank" rel="noopener noreferrer">Video only (MP4)</a>
+                                    {% endif %}
+                                </div>
                             {% else %}
                                 <div class="d-flex align-items-center justify-content-center bg-light border rounded" style="height: 300px;">
                                     <div class="text-center">

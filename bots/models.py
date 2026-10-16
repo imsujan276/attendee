@@ -676,6 +676,12 @@ class RecordingFormats(models.TextChoices):
     NONE = "none"
 
 
+# Extra files derived from an mp4 recording after the meeting ends
+class RecordingAdditionalFiles(models.TextChoices):
+    AUDIO_ONLY = "audio_only"
+    VIDEO_ONLY = "video_only"
+
+
 class RecordingViews(models.TextChoices):
     SPEAKER_VIEW = "speaker_view"
     GALLERY_VIEW = "gallery_view"
@@ -1176,6 +1182,12 @@ class Bot(models.Model):
         if recording_settings is None:
             recording_settings = {}
         return recording_settings.get("format", RecordingFormats.MP4)
+
+    def recording_additional_files(self):
+        recording_settings = self.settings.get("recording_settings", {})
+        if recording_settings is None:
+            recording_settings = {}
+        return recording_settings.get("additional_files", [])
 
     def record_chat_messages_when_paused(self):
         recording_settings = self.settings.get("recording_settings", {})
@@ -2414,9 +2426,23 @@ class Recording(models.Model):
     first_buffer_timestamp_ms = models.BigIntegerField(null=True, blank=True)
 
     file = models.FileField(storage=RecordingStorage())
+    audio_only_file = models.FileField(storage=StorageAlias("recordings"), blank=True)
+    video_only_file = models.FileField(storage=StorageAlias("recordings"), blank=True)
 
     def __str__(self):
         return f"Recording for {self.bot.object_id}"
+
+    @property
+    def audio_only_url(self):
+        if not self.audio_only_file.name:
+            return None
+        return remote_storage_url(self.audio_only_file)
+
+    @property
+    def video_only_url(self):
+        if not self.video_only_file.name:
+            return None
+        return remote_storage_url(self.video_only_file)
 
     @property
     def url(self):

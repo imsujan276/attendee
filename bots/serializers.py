@@ -37,6 +37,7 @@ from .models import (
     MeetingTypes,
     ParticipantEventTypes,
     Recording,
+    RecordingAdditionalFiles,
     RecordingFormats,
     RecordingResolutions,
     RecordingStates,
@@ -538,6 +539,9 @@ class BotValidationMixin:
         if format not in [RecordingFormats.MP4, RecordingFormats.MP3, RecordingFormats.NONE, None]:
             raise serializers.ValidationError({"format": "Format must be mp4 or mp3 or 'none'"})
 
+        if value.get("additional_files") and format != RecordingFormats.MP4:
+            raise serializers.ValidationError({"additional_files": "Additional files are only supported when the format is mp4"})
+
         # Validate view if provided
         view = value.get("view")
         if view not in [RecordingViews.SPEAKER_VIEW, RecordingViews.GALLERY_VIEW, RecordingViews.SPEAKER_VIEW_NO_SIDEBAR, None]:
@@ -699,6 +703,12 @@ BOT_RECORDING_SETTINGS_SCHEMA = {
             "type": "boolean",
             "description": "Whether to reserve extra space to store the recording. Only needed when the bot will record video for longer than 6 hours. Defaults to false.",
             "default": False,
+        },
+        "additional_files": {
+            "type": "array",
+            "items": {"type": "string", "enum": RecordingAdditionalFiles.values},
+            "uniqueItems": True,
+            "description": "Extra files to create from the recording after the meeting ends. 'audio_only' saves an mp3 of the audio and 'video_only' saves an mp4 without audio. Only supported when the format is 'mp4'.",
         },
     },
     "additionalProperties": False,
@@ -1907,7 +1917,7 @@ class RecordingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Recording
-        fields = ["url", "start_timestamp_ms"]
+        fields = ["url", "start_timestamp_ms", "audio_only_url", "video_only_url"]
 
 
 @extend_schema_field(

@@ -2692,6 +2692,17 @@ components:
                 Only needed when the bot will record video for longer than 6 hours.
                 Defaults to false.
               default: false
+            additional_files:
+              type: array
+              items:
+                type: string
+                enum:
+                - audio_only
+                - video_only
+              uniqueItems: true
+              description: Extra files to create from the recording after the meeting
+                ends. 'audio_only' saves an mp3 of the audio and 'video_only' saves
+                an mp4 without audio. Only supported when the format is 'mp4'.
           additionalProperties: false
           required: []
           default:
@@ -3217,6 +3228,17 @@ components:
                 Only needed when the bot will record video for longer than 6 hours.
                 Defaults to false.
               default: false
+            additional_files:
+              type: array
+              items:
+                type: string
+                enum:
+                - audio_only
+                - video_only
+              uniqueItems: true
+              description: Extra files to create from the recording after the meeting
+                ends. 'audio_only' saves an mp3 of the audio and 'video_only' saves
+                an mp4 without audio. Only supported when the format is 'mp4'.
           additionalProperties: false
           required: []
           description: The settings for the bot's recording. The settings specified
@@ -3267,9 +3289,21 @@ components:
           readOnly: true
         start_timestamp_ms:
           type: integer
+        audio_only_url:
+          type: string
+          nullable: true
+          readOnly: true
+          description: URL of the audio-only mp3, if requested in recording_settings.additional_files
+        video_only_url:
+          type: string
+          nullable: true
+          readOnly: true
+          description: URL of the video-only mp4, if requested in recording_settings.additional_files
       required:
+      - audio_only_url
       - start_timestamp_ms
       - url
+      - video_only_url
     RecordingStateEnum:
       type: string
       enum:

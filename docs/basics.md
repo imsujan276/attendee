@@ -49,8 +49,9 @@ Transcription Settings
    - Provider-specific options
 
 Recording Settings
-   - Recording type (Audio and Video / Audio Only)
+   - Recording format (Audio and Video MP4 / Audio Only MP3 / No recording)
    - Recording view (Speaker View / Gallery View)
+   - Additional files created after the meeting (Audio Only MP3 / Video Only MP4)
 
 Automatic leave settings
    - How long should the bot wait to be let into the meeting before giving up?
@@ -61,6 +62,28 @@ Automatic leave settings
 Webhooks
    - Bot state changes
    - Transcript updates
+
+## Recording Files
+
+The `recording_settings.format` field controls what the bot records: `mp4` (video and audio, the default), `mp3` (audio only) or `none` (no recording, transcript only).
+
+For `mp4` recordings, you can also ask for extra files that are created from the recording after the meeting ends:
+
+```json
+{
+    "recording_settings": {
+        "format": "mp4",
+        "additional_files": ["audio_only", "video_only"]
+    }
+}
+```
+
+- `audio_only` saves an MP3 of the meeting audio.
+- `video_only` saves an MP4 of the video without audio.
+
+The extra files are stored next to the main recording. The recording endpoint returns their URLs in `audio_only_url` and `video_only_url` (these are `null` when the file was not requested), and the bot's page in the dashboard shows download links for them. If creating an extra file fails, the error is logged and the main recording is still saved.
+
+The dashboard's Create Bot form has the same options under Recording and Also save.
 
 ## Platform Support
 Currently supported platforms:

@@ -701,6 +701,8 @@ def generate_recordings_json_for_bot_detail_view(bot):
                 "state": recording.state,
                 "recording_type": recording.bot.recording_type(),
                 "url": recording.url,
+                "audio_only_url": recording.audio_only_url,
+                "video_only_url": recording.video_only_url,
                 "transcriptions": [
                     realtime_transcription,
                     *async_transcriptions,
@@ -726,6 +728,8 @@ def obfuscate_recordings_json_for_bot_detail_view(recordings_data):
     """
     for recording in recordings_data:
         recording["url"] = None
+        recording["audio_only_url"] = None
+        recording["video_only_url"] = None
         for transcription in recording["transcriptions"]:
             for utterance in transcription["utterances"]:
                 utterance["transcript"] = obfuscate_text(utterance.get("transcript"))
