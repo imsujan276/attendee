@@ -80,6 +80,40 @@ services:
     volumes:
       - redis:/data/redis
 
+  # Optional S3-compatible storage that keeps recordings, audio chunks and debug screenshots
+  # in ./local_storage/s3 instead of AWS. Enable it by setting these in .env:
+  #   COMPOSE_PROFILES=local-storage
+  #   AWS_ENDPOINT_URL=http://s3.localhost:19000
+  # s3.localhost resolves to this container inside the network and to 127.0.0.1 in the browser,
+  # so presigned recording URLs work from both.
+  storage:
+    image: versity/versitygw:v1.8.0@sha256:30292fc2eeacc67a36993b01f7a7a5e3361a19cced0e80c1d71cfa2a4b0a2499
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mkdir -p /srv/data/$$AWS_RECORDING_STORAGE_BUCKET_NAME /srv/meta && exec versitygw --port :19000 --health /health --quiet posix --sidecar /srv/meta /srv/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ROOT_ACCESS_KEY: ${AWS_ACCESS_KEY_ID:-}
+      ROOT_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    ports:
+      - "127.0.0.1:19000:19000"
+    volumes:
+      - ./local_storage/s3:/srv/data
+      - ./local_storage/s3-meta:/srv/meta
+    networks:
+      attendee_network:
+        aliases:
+          - s3.localhost
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:19000/health || exit 1"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+    profiles:
+      - local-storage
+
 networks:
   attendee_network:
     driver: bridge

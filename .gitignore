@@ -100,3 +100,6 @@ db.sqlite3
 custom/
 docker-compose.yaml
 .idea/
+
+# Local recordings and emails (see storage service in dev.docker-compose.yaml)
+local_storage/

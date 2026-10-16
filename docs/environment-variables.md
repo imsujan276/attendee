@@ -86,6 +86,17 @@ This document lists all supported environment variables for the Attendee applica
 | `USE_REMOTE_STORAGE_FOR_AUDIO_CHUNKS` | Boolean | `false` | Store audio chunks in remote storage (S3/Azure) instead of database. |
 | `FALLBACK_TO_DB_STORAGE_FOR_AUDIO_CHUNKS_IF_REMOTE_STORAGE_FAILS` | Boolean | `false` | Fall back to database storage if remote storage fails (only if `USE_REMOTE_STORAGE_FOR_AUDIO_CHUNKS` is `true`). |
 
+### Local Development Storage
+
+`dev.docker-compose.yaml` includes an optional S3-compatible server (versitygw) that stores recordings, audio chunks and debug screenshots in `./local_storage/s3` instead of AWS. To use it, set these in `.env` along with the AWS variables above:
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `COMPOSE_PROFILES` | `local-storage` | Starts the `storage` service with the other development services. |
+| `AWS_ENDPOINT_URL` | `http://s3.localhost:19000` | Points uploads at the local server. `s3.localhost` resolves to the server inside Docker and to `127.0.0.1` in the browser, so recording download links work from both. |
+| `AWS_RECORDING_STORAGE_BUCKET_NAME` | Any name, e.g. `attendee-local` | The bucket is created as a folder under `./local_storage/s3`. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Any random values | Used as the local server's credentials. |
+
 ---
 
 ## Email
@@ -93,6 +104,7 @@ This document lists all supported environment variables for the Attendee applica
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `DISABLE_EMAIL` | Boolean | `false` | Disable email sending. Set to `true` to use console backend for development. |
+| `EMAIL_FILE_PATH` | String | (None) | Development settings only. Writes outgoing emails (such as signup confirmations) as files in this directory instead of printing them to the console, e.g. `/attendee/local_storage/emails`. |
 | `EMAIL_HOST` | String | `smtp.mailgun.org` | SMTP server hostname. |
 | `EMAIL_HOST_USER` | String | **Required** (if email enabled) | SMTP username. |
 | `EMAIL_HOST_PASSWORD` | String | **Required** (if email enabled) | SMTP password. |

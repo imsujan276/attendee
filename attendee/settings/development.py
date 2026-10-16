@@ -6,6 +6,11 @@ DEBUG = True
 SITE_DOMAIN = "localhost:8000"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost").split(",")
 
+# Write outgoing emails (e.g. signup confirmations) to files instead of the console
+if os.getenv("EMAIL_FILE_PATH"):
+    EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+    EMAIL_FILE_PATH = os.getenv("EMAIL_FILE_PATH")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
