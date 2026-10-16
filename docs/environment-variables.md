@@ -183,6 +183,8 @@ This document lists all supported environment variables for the Attendee applica
 | `ENFORCE_DOMAIN_ALLOWLIST_IN_CHROME` | Boolean | `false` | Enforce domain allowlist in Chrome web bot. |
 | `MASK_TRANSCRIPT_IN_LOGS` | Boolean | `false` | Mask transcript content in application logs for privacy. |
 | `ELEVENLABS_TRANSCRIPTION_MIN_TIMEOUT_SECONDS` | Float | `300` | Minimum time to wait for ElevenLabs to return a transcript before the request times out and is retried. |
+| `ELEVENLABS_TRANSCRIPTION_MP3_BITRATE_KBPS` | Integer | `64` | Bitrate of the MP3 sent to ElevenLabs when several utterances are transcribed together (after the meeting, or in an async transcription). Lower bitrates make smaller uploads. |
+| `ELEVENLABS_TRANSCRIPTION_UPLOAD_TIMEOUT_SECONDS` | Float | `120` | How long connecting to ElevenLabs, or any single write while uploading the audio, can stall before the request fails and is retried. |
 | `ELEVENLABS_TRANSCRIPTION_TIMEOUT_SECONDS_PER_AUDIO_SECOND` | Float | `1` | Seconds to wait for ElevenLabs per second of audio, so longer audio gets a longer timeout. The timeout is never more than 55 minutes. |
 
 ---

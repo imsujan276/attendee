@@ -190,18 +190,18 @@ class TestTranscriptionTimingSetting(TransactionTestCase):
 
 class TestElevenLabsRequestTimeout(TransactionTestCase):
     def test_short_audio_gets_the_minimum_timeout(self):
-        self.assertEqual(get_elevenlabs_request_timeout_seconds(20 * 1000), (10, 5 * 60))
+        self.assertEqual(get_elevenlabs_request_timeout_seconds(20 * 1000), (120, 5 * 60))
 
     def test_timeout_grows_with_the_audio_length(self):
-        self.assertEqual(get_elevenlabs_request_timeout_seconds(30 * 60 * 1000), (10, 30 * 60))
+        self.assertEqual(get_elevenlabs_request_timeout_seconds(30 * 60 * 1000), (120, 30 * 60))
 
     def test_timeout_stays_under_the_task_time_limit(self):
-        self.assertEqual(get_elevenlabs_request_timeout_seconds(2 * 60 * 60 * 1000), (10, 55 * 60))
+        self.assertEqual(get_elevenlabs_request_timeout_seconds(2 * 60 * 60 * 1000), (120, 55 * 60))
 
-    @mock.patch.dict(os.environ, {"ELEVENLABS_TRANSCRIPTION_MIN_TIMEOUT_SECONDS": "60", "ELEVENLABS_TRANSCRIPTION_TIMEOUT_SECONDS_PER_AUDIO_SECOND": "2"})
+    @mock.patch.dict(os.environ, {"ELEVENLABS_TRANSCRIPTION_MIN_TIMEOUT_SECONDS": "60", "ELEVENLABS_TRANSCRIPTION_TIMEOUT_SECONDS_PER_AUDIO_SECOND": "2", "ELEVENLABS_TRANSCRIPTION_UPLOAD_TIMEOUT_SECONDS": "30"})
     def test_timeout_can_be_adjusted_with_env_vars(self):
-        self.assertEqual(get_elevenlabs_request_timeout_seconds(10 * 1000), (10, 60))
-        self.assertEqual(get_elevenlabs_request_timeout_seconds(10 * 60 * 1000), (10, 20 * 60))
+        self.assertEqual(get_elevenlabs_request_timeout_seconds(10 * 1000), (30, 60))
+        self.assertEqual(get_elevenlabs_request_timeout_seconds(10 * 60 * 1000), (30, 20 * 60))
 
 
 @mock.patch.dict(os.environ, {"AWS_RECORDING_STORAGE_BUCKET_NAME": "test-bucket"})
@@ -217,7 +217,7 @@ class TestPostMeetingTranscriptionTimeout(PostMeetingTranscriptionTestCase):
 
         self._end_bot()
 
-        self.assertEqual(mock_post.call_args[1]["timeout"], (10, 20 * 60))
+        self.assertEqual(mock_post.call_args[1]["timeout"], (120, 20 * 60))
 
     @mock.patch("bots.tasks.process_utterance_group_for_async_transcription_task.process_utterance_group_for_async_transcription.retry")
     def test_timed_out_request_is_retried(self, mock_retry, mock_post, mock_get_mp3, mock_deliver_webhook):

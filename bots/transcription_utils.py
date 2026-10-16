@@ -243,6 +243,7 @@ def get_transcription_for_utterance_group(utterances):
         total_duration_ms = sum(utterance.duration_ms for utterance in utterances)
 
         transcription_provider = first_utterance.transcription_provider
+        mp3_bitrate_kbps = 128
 
         if transcription_provider == TranscriptionProviders.ASSEMBLY_AI:
             get_transcription_from_mp3_method = get_transcription_via_assemblyai_from_mp3
@@ -250,11 +251,13 @@ def get_transcription_for_utterance_group(utterances):
             get_transcription_from_mp3_method = get_transcription_via_deepgram_from_mp3
         elif transcription_provider == TranscriptionProviders.ELEVENLABS:
             get_transcription_from_mp3_method = get_transcription_via_elevenlabs_from_mp3
+            # Groups can hold up to 30 minutes of speech, and 64 kbps mono is plenty for speech recognition while halving the upload
+            mp3_bitrate_kbps = int(os.getenv("ELEVENLABS_TRANSCRIPTION_MP3_BITRATE_KBPS", 64))
         else:
             raise Exception(f"Unknown or unsupported transcription provider: {transcription_provider}")
 
         transcription, error = get_transcription_from_mp3_method(
-            retrieve_mp3_data_callback=lambda: get_mp3_for_utterance_group(utterances, sample_rate=first_utterance.get_sample_rate()),
+            retrieve_mp3_data_callback=lambda: get_mp3_for_utterance_group(utterances, sample_rate=first_utterance.get_sample_rate(), bitrate_kbps=mp3_bitrate_kbps),
             duration_ms=total_duration_ms,
             identifier=f"utterances {[utterance.id for utterance in utterances]}",
             transcription_settings=first_utterance.transcription_settings,
@@ -430,13 +433,15 @@ def get_transcription_via_assemblyai_from_mp3(
 # It scales with the audio length so that long files aren't cut off, while a hung connection is still abandoned
 # well before the celery task's one hour time limit.
 def get_elevenlabs_request_timeout_seconds(duration_ms: int) -> tuple[float, float]:
-    connect_timeout_seconds = 10
+    # requests only takes a connect and a read timeout, and urllib3 applies the connect timeout to uploading the audio as well.
+    # Each socket write can stall for this long, so it has to allow for a long upload on a slow or congested connection.
+    connect_and_upload_timeout_seconds = float(os.getenv("ELEVENLABS_TRANSCRIPTION_UPLOAD_TIMEOUT_SECONDS", 120))
     min_read_timeout_seconds = float(os.getenv("ELEVENLABS_TRANSCRIPTION_MIN_TIMEOUT_SECONDS", 5 * 60))
     read_timeout_seconds_per_audio_second = float(os.getenv("ELEVENLABS_TRANSCRIPTION_TIMEOUT_SECONDS_PER_AUDIO_SECOND", 1))
     max_read_timeout_seconds = 55 * 60
 
     read_timeout_seconds = max(min_read_timeout_seconds, (duration_ms / 1000) * read_timeout_seconds_per_audio_second)
-    return connect_timeout_seconds, min(read_timeout_seconds, max_read_timeout_seconds)
+    return connect_and_upload_timeout_seconds, min(read_timeout_seconds, max_read_timeout_seconds)
 
 
 def get_transcription_via_elevenlabs_from_mp3(
