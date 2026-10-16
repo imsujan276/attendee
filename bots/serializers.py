@@ -402,13 +402,14 @@ TRANSCRIPTION_SETTINGS_SCHEMA = {
         "elevenlabs": {
             "type": "object",
             "properties": {
-                "model_id": {"type": "string", "description": "The ElevenLabs model to use for transcription", "enum": ["scribe_v1", "scribe_v1_experimental"]},
+                "model_id": {"type": "string", "description": "The ElevenLabs model to use for transcription", "enum": ["scribe_v1", "scribe_v1_experimental", "scribe_v2"]},
                 "language_code": {
                     "type": "string",
                     "description": "An ISO-639-1 or ISO-639-3 language_code corresponding to the language of the audio file.",
                     "enum": get_elevenlabs_language_codes(),
                 },
                 "tag_audio_events": {"type": "boolean", "description": "Whether to tag audio events like 'laughter' in the transcription."},
+                "no_verbatim": {"type": "boolean", "description": "Whether to remove filler words, false starts and non-speech sounds from the transcription. Only supported by scribe_v2."},
             },
             "required": ["model_id"],
             "additionalProperties": False,

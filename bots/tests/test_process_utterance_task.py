@@ -1926,6 +1926,28 @@ class ElevenLabsProviderTest(TransactionTestCase):
             self.assertEqual(data["model_id"], "scribe_v1_experimental")
             self.assertEqual(data["language_code"], "en")
             self.assertTrue(data["tag_audio_events"])
+            self.assertNotIn("no_verbatim", data)
+
+    @mock.patch("bots.tasks.process_utterance_task.requests.post")
+    @mock.patch("bots.tasks.process_utterance_task.pcm_to_mp3", return_value=b"mp3")
+    def test_no_verbatim_setting_is_passed(self, mock_pcm, mock_post):
+        """no_verbatim is sent to ElevenLabs when configured."""
+        self.bot.settings = {"transcription_settings": {"elevenlabs": {"model_id": "scribe_v2", "tag_audio_events": False, "no_verbatim": True}}}
+        self.bot.save()
+
+        with self._patch_creds():
+            mock_response = mock.Mock(status_code=200)
+            mock_response.json.return_value = {"text": "test transcript", "language_probability": 0.8, "words": [{"text": "test", "start": 0.0, "end": 0.5}]}
+            mock_post.return_value = mock_response
+
+            transcript, failure = get_transcription_via_elevenlabs(self.utterance)
+
+            self.assertIsNone(failure)
+            data = mock_post.call_args[1]["data"]
+            self.assertEqual(data["model_id"], "scribe_v2")
+            self.assertFalse(data["tag_audio_events"])
+            self.assertTrue(data["no_verbatim"])
+            self.assertNotIn("language_code", data)
 
     def test_missing_credentials_row(self):
         """No Credentials row → CREDENTIALS_NOT_FOUND."""

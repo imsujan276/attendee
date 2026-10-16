@@ -58,7 +58,7 @@ Closed caption-based transcription is free.
 
 ## Adding transcription providers in the dashboard
 
-For third-party-based transcription, you need to add your API Key for a provider like Deepgram, OpenAI, Gladia, or Assembly AI in the Settings > Credentials page.
+For third-party-based transcription, you need to add your API Key for a provider like Deepgram, OpenAI, Gladia, Assembly AI, or ElevenLabs in the Settings > Credentials page.
 
 ## Transcription errors
 
@@ -141,6 +141,30 @@ To use a custom OpenAI-compatible endpoint (such as a proxy server or alternativ
 - `OPENAI_MODEL_NAME`: The model name to use for transcription (default: `gpt-4o-transcribe`)
 
 Example: `OPENAI_BASE_URL=https://your-proxy.com/v1` and `OPENAI_MODEL_NAME=whisper-large-v3`
+
+### ElevenLabs
+
+Uses ElevenLabs Scribe. Each utterance is sent to ElevenLabs after the speaker pauses, so transcripts arrive a few seconds after the speech rather than word by word.
+
+```json
+{
+    "elevenlabs": {
+        "model_id": "scribe_v2",
+        "no_verbatim": true,
+        "tag_audio_events": false
+    }
+}
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `model_id` | **Required.** One of `scribe_v2`, `scribe_v1` or `scribe_v1_experimental`. |
+| `language_code` | Optional ISO-639-1 or ISO-639-3 code (e.g. `nep`). Leave it out to have ElevenLabs detect the language of each utterance automatically. |
+| `no_verbatim` | Removes filler words, false starts and non-speech sounds from the transcript. Only supported by `scribe_v2`. |
+| `tag_audio_events` | Adds tags like `[laughter]` or `[background noise]` to the transcript. ElevenLabs enables this when it is not set, so set it to `false` to turn the tags off. |
+
+Automatic language detection works per utterance, so it can switch languages between utterances. It is less reliable on short utterances and between closely related languages that share a script (for example Nepali and Hindi). Longer utterances give better results.
+
 
 ### Custom Async (Bring Your Own Platform)
 

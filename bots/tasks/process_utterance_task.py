@@ -437,6 +437,9 @@ def get_transcription_via_elevenlabs(utterance):
 
     data["tag_audio_events"] = transcription_settings.elevenlabs_tag_audio_events()
 
+    if transcription_settings.elevenlabs_no_verbatim() is not None:
+        data["no_verbatim"] = transcription_settings.elevenlabs_no_verbatim()
+
     try:
         response = requests.post(url, headers=headers, files=files, data=data if data else None)
 

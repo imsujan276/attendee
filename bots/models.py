@@ -782,6 +782,9 @@ class TranscriptionSettings:
     def elevenlabs_tag_audio_events(self):
         return self._settings.get("elevenlabs", {}).get("tag_audio_events", None)
 
+    def elevenlabs_no_verbatim(self):
+        return self._settings.get("elevenlabs", {}).get("no_verbatim", None)
+
     def custom_async_additional_props(self):
         return self._settings.get("custom_async", {})
 
