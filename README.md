@@ -110,7 +110,7 @@ For more details, follow [this guide](https://developers.zoom.us/docs/meeting-sd
 - Create local environment variables
   - **Linux/Mac**: `docker compose -f dev.docker-compose.yaml run --rm attendee-app-local python init_env.py > .env`
   - **Windows**: `docker compose -f dev.docker-compose.yaml run --rm attendee-app-local python init_env.py | Out-File -Encoding utf8 .env` 
-- Edit the `.env` file and enter your AWS information. To keep recordings on your machine instead of AWS, use the local storage server described in [Local Development Storage](docs/environment-variables.md#local-development-storage).
+- Edit the `.env` file and enter your AWS information. [`.env.example`](.env.example) shows a complete development `.env` with local storage. To keep recordings on your machine instead of AWS, use the local storage server described in [Local Development Storage](docs/environment-variables.md#local-development-storage).
 - Optionally, add `EMAIL_FILE_PATH=/attendee/local_storage/emails` to `.env` to save emails (such as the signup confirmation link) as files instead of printing them to the server logs.
 - Start all the services: `docker compose -f dev.docker-compose.yaml up`
 - After the services have started, run migrations in a separate terminal tab: `docker compose -f dev.docker-compose.yaml exec attendee-app-local python manage.py migrate`
