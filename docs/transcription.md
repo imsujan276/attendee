@@ -103,6 +103,8 @@ You can set up webhooks for real time transcription in the dashboard. Go to the 
 
 Make sure the `transcript.update` trigger is enabled for your webhook. This will fire a webhook event every time a new utterance is added to the transcript. See the [webhooks](https://docs.attendee.dev/guides/webhooks#payload-for-transcript.update-trigger) page for more details on the webhook payload.
 
+To be notified once the whole transcript is finished, enable the `transcript.completed` trigger. It fires once per bot, after every utterance has been transcribed, and its payload contains the full transcript and the recording URL. See the [webhooks](https://docs.attendee.dev/guides/webhooks#payload-for-transcript.completed-trigger) page for details.
+
 ## Fetching transcripts during and after the meeting
 
 You can fetch transcripts during and after the meeting, by calling the `/transcript` endpoint. See the [API reference](https://docs.attendee.dev/api-reference/tag/bots/get/api/v1/bots/object_id/transcript) for details.
@@ -188,7 +190,7 @@ Set `transcription_timing` to `after_meeting` to transcribe the whole meeting at
 
 The bot saves each participant's audio during the meeting without transcribing it. When the bot ends, the audio is joined in time order and sent to ElevenLabs in requests of up to 30 minutes of speech (configurable with `ASYNC_TRANSCRIPTION_MAX_UTTERANCE_GROUP_DURATION_MS`). ElevenLabs gets the whole conversation as context, so automatic language detection is much more accurate when people switch languages. The words are mapped back to the participants who spoke them.
 
-The transcript is available through the usual transcript endpoint and `transcript.update` webhooks, but only after the meeting ends, usually within a few minutes. The recording's transcription state stays `in_progress` until every part is transcribed. There is no live transcript during the meeting.
+The transcript is available through the usual transcript endpoint and `transcript.update` webhooks, but only after the meeting ends, usually within a few minutes. The recording's transcription state stays `in_progress` until every part is transcribed, and a `transcript.completed` webhook is sent when it finishes. The bot reaches the `ended` state before the transcript is ready, so use `transcript.completed` rather than `post_processing_completed` to know when to fetch it. There is no live transcript during the meeting.
 
 The default, `live`, transcribes each utterance during the meeting as described above.
 

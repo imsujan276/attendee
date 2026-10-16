@@ -2540,6 +2540,9 @@ class RecordingManager:
     # If the transcription succeeded, then mark it as succeeded
     @classmethod
     def terminate_recording(cls, recording: Recording):
+        # A transcription that failed while recording was still going has not been announced yet
+        transcription_failed_during_recording = recording.transcription_state == RecordingTranscriptionStates.FAILED
+
         if recording.state == RecordingStates.IN_PROGRESS or recording.state == RecordingStates.PAUSED:
             # If we don't have a recording file AND we intended to generate one, then it failed.
             if recording.file or recording.bot.recording_type() == RecordingTypes.NO_RECORDING:
@@ -2558,6 +2561,9 @@ class RecordingManager:
                 RecordingManager.set_recording_transcription_failed(recording, failure_data={"failure_reasons": failure_reasons})
             else:
                 RecordingManager.set_recording_transcription_complete(recording)
+
+        if transcription_failed_during_recording:
+            cls.deliver_transcript_completed_webhook(recording)
 
     @classmethod
     def get_recording_in_progress(cls, bot: Bot):
@@ -2654,6 +2660,8 @@ class RecordingManager:
         recording.transcription_state = RecordingTranscriptionStates.COMPLETE
         recording.save()
 
+        cls.deliver_transcript_completed_webhook(recording)
+
     @classmethod
     def set_recording_transcription_failed(cls, recording: Recording, failure_data: dict):
         recording.refresh_from_db()
@@ -2669,17 +2677,53 @@ class RecordingManager:
         recording.transcription_failure_data = failure_data
         recording.save()
 
-    # Used when the transcription runs after the recording has terminated, so nothing else will close it out
+        # If the recording is still going, the webhook is delivered once it terminates
+        if cls.is_terminal_state(recording.state):
+            cls.deliver_transcript_completed_webhook(recording)
+
+    # Used when utterances finish after the recording has terminated, so nothing else will close out the transcription.
+    # This happens when the transcription runs after the meeting, or when live utterances were still being transcribed when the recording terminated.
     @classmethod
     def finish_recording_transcription_if_no_utterances_in_progress(cls, recording: Recording):
-        if recording.utterances.filter(transcription__isnull=True, failure_data__isnull=True).exists():
-            return
-        failed_utterances = recording.utterances.filter(failure_data__isnull=False)
-        if failed_utterances.exists():
-            failure_reasons = list(failed_utterances.filter(failure_data__has_key="reason").values_list("failure_data__reason", flat=True).distinct())
-            RecordingManager.set_recording_transcription_failed(recording, failure_data={"failure_reasons": failure_reasons})
-        else:
-            RecordingManager.set_recording_transcription_complete(recording)
+        # Utterances can finish at the same time, so lock the recording to make sure only one of them finishes the transcription
+        with transaction.atomic():
+            recording = Recording.objects.select_for_update().get(id=recording.id)
+            if not cls.is_terminal_state(recording.state):
+                return
+            utterances = recording.utterances.filter(async_transcription__isnull=True)
+            if utterances.filter(transcription__isnull=True, failure_data__isnull=True).exists():
+                return
+            if cls.transcription_failed_because_utterances_were_in_progress(recording):
+                # The utterances it was waiting on have all finished now, so the transcription can be finished based on how they went
+                recording.transcription_state = RecordingTranscriptionStates.IN_PROGRESS
+                recording.transcription_failure_data = None
+                recording.save()
+            if recording.transcription_state != RecordingTranscriptionStates.IN_PROGRESS:
+                return
+            failed_utterances = utterances.filter(failure_data__isnull=False)
+            if failed_utterances.exists():
+                failure_reasons = list(failed_utterances.filter(failure_data__has_key="reason").values_list("failure_data__reason", flat=True).distinct())
+                RecordingManager.set_recording_transcription_failed(recording, failure_data={"failure_reasons": failure_reasons})
+            else:
+                RecordingManager.set_recording_transcription_complete(recording)
+
+    @classmethod
+    def transcription_failed_because_utterances_were_in_progress(cls, recording: Recording):
+        if recording.transcription_state != RecordingTranscriptionStates.FAILED:
+            return False
+        failure_reasons = (recording.transcription_failure_data or {}).get("failure_reasons", [])
+        return TranscriptionFailureReasons.UTTERANCES_STILL_IN_PROGRESS_WHEN_RECORDING_TERMINATED in failure_reasons
+
+    # Called once the recording and its transcription have both finished, so the payload has the whole transcript and the recording file
+    @classmethod
+    def deliver_transcript_completed_webhook(cls, recording: Recording):
+        from bots.webhook_payloads import transcript_completed_webhook_payload
+
+        trigger_webhook(
+            webhook_trigger_type=WebhookTriggerTypes.TRANSCRIPT_COMPLETED,
+            bot=recording.bot,
+            payload=transcript_completed_webhook_payload(recording),
+        )
 
     @classmethod
     def is_terminal_state(cls, state: int):
@@ -3322,6 +3366,7 @@ class WebhookTriggerTypes(models.IntegerChoices):
     BOT_LOGS_UPDATE = 9, "Bot Logs Update"
     PARTICIPANT_EVENTS_SPEECH_START_STOP = 10, "Participant Speech Start/Stop"
     PARTICIPANT_EVENTS_SCREENSHARE_START_STOP = 11, "Participant Screenshare Start/Stop"
+    TRANSCRIPT_COMPLETED = 12, "Transcript Completed"
     # add other event types here
 
     @classmethod
@@ -3339,6 +3384,7 @@ class WebhookTriggerTypes(models.IntegerChoices):
             cls.BOT_LOGS_UPDATE: "bot_logs.update",
             cls.PARTICIPANT_EVENTS_SPEECH_START_STOP: "participant_events.speech_start_stop",
             cls.PARTICIPANT_EVENTS_SCREENSHARE_START_STOP: "participant_events.screenshare_start_stop",
+            cls.TRANSCRIPT_COMPLETED: "transcript.completed",
         }
 
     @classmethod

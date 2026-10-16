@@ -104,6 +104,7 @@ def process_utterance(self, utterance_id):
                 utterance.failure_data = failure_data
                 utterance.save()
                 logger.info(f"Transcription failed for utterance {utterance_id}, failure data: {failure_data}")
+                finish_recording_transcription_if_recording_terminated(utterance)
                 return
 
         # The direct audio_blob column on the utterance model is deprecated, but for backwards compatibility, we need to clear it if it exists
@@ -128,13 +129,18 @@ def process_utterance(self, utterance_id):
                 payload=utterance_webhook_payload(utterance),
             )
 
+    finish_recording_transcription_if_recording_terminated(utterance)
+
+
+# If the recording terminated while this utterance was still being transcribed, it may have been the last one the recording's transcription was waiting on
+def finish_recording_transcription_if_recording_terminated(utterance):
     # If the utterance is for an async transcription, we don't need to do anything with the recording state.
     if utterance.async_transcription is not None:
         return
 
-    # If the recording is in a terminal state and there are no more utterances to transcribe, set the recording's transcription state to complete
-    if RecordingManager.is_terminal_state(utterance.recording.state) and Utterance.objects.filter(recording=utterance.recording, transcription__isnull=True).count() == 0:
-        RecordingManager.set_recording_transcription_complete(utterance.recording)
+    utterance.recording.refresh_from_db()
+    if RecordingManager.is_terminal_state(utterance.recording.state):
+        RecordingManager.finish_recording_transcription_if_no_utterances_in_progress(utterance.recording)
 
 
 def get_transcription_via_gladia(utterance):

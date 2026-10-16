@@ -2106,6 +2106,7 @@ components:
                   enum:
                   - bot.state_change
                   - transcript.update
+                  - transcript.completed
                   - chat_messages.update
                   - participant_events.join_leave
                   - participant_events.speech_start_stop

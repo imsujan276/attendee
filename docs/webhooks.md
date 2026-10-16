@@ -15,7 +15,7 @@ To create a project-level webhook via the UI:
 1. Click on "Settings → Webhooks" in the sidebar
 2. Click "Create Webhook" 
 3. Provide an HTTPS URL that will receive webhook events
-4. Select the triggers you want to receive notifications for (we currently have the following triggers: `bot.state_change`, `transcript.update`, `chat_messages.update`, `participant_events.join_leave`, `participant_events.speech_start_stop`, `participant_events.screenshare_start_stop`, `calendar.events_update`, `calendar.state_change`, and `bot_logs.update`)
+4. Select the triggers you want to receive notifications for (we currently have the following triggers: `bot.state_change`, `transcript.update`, `transcript.completed`, `chat_messages.update`, `participant_events.join_leave`, `participant_events.speech_start_stop`, `participant_events.screenshare_start_stop`, `calendar.events_update`, `calendar.state_change`, and `bot_logs.update`)
 5. Click "Create" to save your subscription
 
 ## Creating Bot-Level Webhooks
@@ -45,6 +45,7 @@ Bot-level webhooks are created via the API when creating a bot. Include a `webho
 |---------|-------------|
 | `bot.state_change` | Bot changes state (joins, leaves, starts recording, etc.) |
 | `transcript.update` | Real-time transcript updates during meeting |
+| `transcript.completed` | The meeting's transcript is finished. Includes the full transcript and the recording URL |
 | `chat_messages.update` | Chat message updates in the meeting |
 | `participant_events.join_leave` | A participant joins or leaves the meeting |
 | `participant_events.speech_start_stop` | A participant starts or stops speaking |
@@ -166,6 +167,43 @@ For webhooks triggered by `transcript.update`, the `data` field contains a singl
   },
 }
 ```
+
+### Payload for `transcript.completed` trigger
+
+For webhooks triggered by `transcript.completed`, the `data` field contains the whole transcript along with the recording file URLs:
+
+```
+{
+  "state": <"complete", or "failed" if any part of the transcript couldn't be transcribed>,
+  "failure_data": <null, or {"failure_reasons": [...]} when the state is "failed">,
+  "recording": {
+    "url": <A signed URL for the recording file, or null if there is no recording file>,
+    "start_timestamp_ms": <The timestamp of the start of the recording in milliseconds>,
+    "audio_only_url": <A URL for the audio only file, if one was requested>,
+    "video_only_url": <A URL for the video only file, if one was requested>,
+  },
+  "transcript": [
+    {
+      "speaker_name": <The name of the speaker>,
+      "speaker_uuid": <The UUID of the speaker within the meeting>,
+      "speaker_user_uuid": <The UUID of the speaker's user account within the meeting platform>,
+      "speaker_is_host": <Whether the speaker is the host of the meeting>,
+      "timestamp_ms": <The timestamp of the utterance in milliseconds>,
+      "duration_ms": <The duration of the utterance in milliseconds>,
+      "transcription": <The same object returned by the transcript endpoint, including "transcript" and "words">,
+    },
+    ...
+  ],
+}
+```
+
+The `transcript` and `recording` fields have the same shape as the [transcript](https://docs.attendee.dev/api-reference/tag/bots/get/api/v1/bots/object_id/transcript) and [recording](https://docs.attendee.dev/api-reference/tag/bots/get/api/v1/bots/object_id/recording) endpoints. A failed transcript still contains every utterance that was transcribed.
+
+This webhook is sent after the bot has ended and every utterance has been transcribed or has failed. With live transcription it is sent when the bot ends. With `transcription_timing` set to `after_meeting`, it is sent later, once the post-meeting transcription finishes. It is not sent if the bot has no transcript to finish, for example when nobody spoke.
+
+With live transcription, the bot waits up to 5 minutes after the meeting for utterances that are still being transcribed. If some are still not done, the webhook is sent with `state` set to `failed` and the reason `utterances_still_in_progress_when_recording_terminated`. Once those utterances finish, it is sent again with the final state and the full transcript, so use the latest delivery for a bot.
+
+With S3 storage, the recording URL is signed and expires 30 minutes after the webhook is created. If it has expired by the time you download the file, call the recording endpoint for a new URL.
 
 ### Payload for `chat_messages.update` trigger
 
