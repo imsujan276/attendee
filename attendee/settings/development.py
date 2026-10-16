@@ -3,7 +3,7 @@ import os
 from .base import *
 
 DEBUG = True
-SITE_DOMAIN = "localhost:8000"
+SITE_DOMAIN = "localhost:8007"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost").split(",")
 
 # Write outgoing emails (e.g. signup confirmations) to files instead of the console
