@@ -1,6 +1,7 @@
 import os
 
 from .base import *
+from .base import RECORDING_STORAGE_BACKEND, STORAGES
 
 DEBUG = True
 SITE_DOMAIN = "localhost:8000"
@@ -17,6 +18,10 @@ STORAGES = {
     "bot_debug_screenshots": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
     "audio_chunks": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
 }
+
+# Use the default metadata rules, even if a local .env relaxes them
+REQUIRE_STRING_VALUES_IN_METADATA = True
+MAX_METADATA_LENGTH = 1000
 
 DATABASES = {
     "default": {
