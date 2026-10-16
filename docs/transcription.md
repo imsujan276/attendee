@@ -167,6 +167,24 @@ Uses ElevenLabs Scribe. Each utterance is sent to ElevenLabs after the speaker p
 
 Automatic language detection works per utterance, so it can switch languages between utterances. It is less reliable on short utterances and between closely related languages that share a script (for example Nepali and Hindi). Longer utterances give better results.
 
+#### Transcribing after the meeting ends
+
+Set `transcription_timing` to `after_meeting` to transcribe the whole meeting at once instead of utterance by utterance:
+
+```json
+{
+    "elevenlabs": {
+        "model_id": "scribe_v2",
+        "transcription_timing": "after_meeting"
+    }
+}
+```
+
+The bot saves each participant's audio during the meeting without transcribing it. When the bot ends, the audio is joined in time order and sent to ElevenLabs in requests of up to 30 minutes of speech (configurable with `ASYNC_TRANSCRIPTION_MAX_UTTERANCE_GROUP_DURATION_MS`). ElevenLabs gets the whole conversation as context, so automatic language detection is much more accurate when people switch languages. The words are mapped back to the participants who spoke them.
+
+The transcript is available through the usual transcript endpoint and `transcript.update` webhooks, but only after the meeting ends, usually within a few minutes. The recording's transcription state stays `in_progress` until every part is transcribed. There is no live transcript during the meeting.
+
+The default, `live`, transcribes each utterance during the meeting as described above.
 
 ### Custom Async (Bring Your Own Platform)
 

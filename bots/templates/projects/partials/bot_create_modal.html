@@ -62,6 +62,14 @@
                             </select>
                             <div class="form-text">The language is detected automatically. Requires an ElevenLabs key in Settings → Credentials.</div>
                         </div>
+                        <div class="mb-2">
+                            <label for="id_elevenlabs_transcription_timing" class="form-label">When to transcribe</label>
+                            <select class="form-select" id="id_elevenlabs_transcription_timing" name="elevenlabs_transcription_timing">
+                                <option value="live" selected>Live, during the call</option>
+                                <option value="after_meeting">After the call ends</option>
+                            </select>
+                            <div class="form-text">After the call ends is more accurate when people switch languages, because ElevenLabs hears the whole conversation at once. The transcript appears a few minutes after the call.</div>
+                        </div>
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="id_elevenlabs_no_verbatim" name="elevenlabs_no_verbatim" checked>
                             <label class="form-check-label" for="id_elevenlabs_no_verbatim">Remove filler words and non-speech sounds (scribe_v2 only)</label>
@@ -190,6 +198,7 @@
             const elevenlabsModelField = document.getElementById('id_elevenlabs_model_id');
             const elevenlabsNoVerbatimField = document.getElementById('id_elevenlabs_no_verbatim');
             const elevenlabsTagAudioEventsField = document.getElementById('id_elevenlabs_tag_audio_events');
+            const elevenlabsTranscriptionTimingField = document.getElementById('id_elevenlabs_transcription_timing');
 
             // Build the same request body that the dashboard sends to create the bot
             function buildRequestData() {
@@ -214,6 +223,9 @@
                     };
                     if (elevenlabsModelField.value === 'scribe_v2' && elevenlabsNoVerbatimField.checked) {
                         elevenlabs.no_verbatim = true;
+                    }
+                    if (elevenlabsTranscriptionTimingField.value === 'after_meeting') {
+                        elevenlabs.transcription_timing = 'after_meeting';
                     }
                     data.transcription_settings = { elevenlabs: elevenlabs };
                 }
@@ -252,7 +264,7 @@
             // Add event listeners to form fields
             meetingUrlField.addEventListener('input', updateCurlCommand);
             botNameField.addEventListener('input', updateCurlCommand);
-            [recordingFormatField, transcriptionProviderField, elevenlabsModelField, elevenlabsNoVerbatimField, elevenlabsTagAudioEventsField, ...additionalFileFields].forEach(field => {
+            [recordingFormatField, transcriptionProviderField, elevenlabsModelField, elevenlabsNoVerbatimField, elevenlabsTagAudioEventsField, elevenlabsTranscriptionTimingField, ...additionalFileFields].forEach(field => {
                 field.addEventListener('change', updateCurlCommand);
             });
             

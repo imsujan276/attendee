@@ -182,6 +182,8 @@ This document lists all supported environment variables for the Attendee applica
 | `CUSTOM_BOT_POD_SPEC_TYPES` | String | (Empty) | Comma-separated list of custom bot pod specification types. |
 | `ENFORCE_DOMAIN_ALLOWLIST_IN_CHROME` | Boolean | `false` | Enforce domain allowlist in Chrome web bot. |
 | `MASK_TRANSCRIPT_IN_LOGS` | Boolean | `false` | Mask transcript content in application logs for privacy. |
+| `ELEVENLABS_TRANSCRIPTION_MIN_TIMEOUT_SECONDS` | Float | `300` | Minimum time to wait for ElevenLabs to return a transcript before the request times out and is retried. |
+| `ELEVENLABS_TRANSCRIPTION_TIMEOUT_SECONDS_PER_AUDIO_SECOND` | Float | `1` | Seconds to wait for ElevenLabs per second of audio, so longer audio gets a longer timeout. The timeout is never more than 55 minutes. |
 
 ---
 

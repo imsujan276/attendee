@@ -43,6 +43,7 @@ from .models import (
     ChatMessage,
     Credentials,
     CreditTransaction,
+    ElevenLabsTranscriptionTimings,
     InstanceHealthAlertsState,
     Participant,
     ParticipantEventTypes,
@@ -67,6 +68,7 @@ from .tasks.deliver_webhook_task import deliver_webhook
 from .usage_utils import get_usage_data
 from .utils import (
     generate_recordings_json_for_bot_detail_view,
+    generate_settings_summary_for_bot_detail_view,
     obfuscate_chat_messages_for_bot_detail_view,
     obfuscate_recordings_json_for_bot_detail_view,
     obfuscate_webhook_delivery_attempts_for_bot_detail_view,
@@ -996,6 +998,7 @@ class ProjectBotDetailView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                 "bot": bot,
                 "BotStates": BotStates,
                 "SessionTypes": SessionTypes,
+                "settings_summary": generate_settings_summary_for_bot_detail_view(bot) if bot.session_type == SessionTypes.BOT else [],
                 "webhook_delivery_attempts": webhook_delivery_attempts,
                 "chat_messages": chat_messages,
                 "participants": participants,
@@ -1511,6 +1514,8 @@ class CreateBotView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                 # no_verbatim is only supported by scribe_v2
                 if elevenlabs_model_id == "scribe_v2" and request.POST.get("elevenlabs_no_verbatim") == "on":
                     elevenlabs_settings["no_verbatim"] = True
+                if request.POST.get("elevenlabs_transcription_timing") == ElevenLabsTranscriptionTimings.AFTER_MEETING:
+                    elevenlabs_settings["transcription_timing"] = ElevenLabsTranscriptionTimings.AFTER_MEETING
                 data["transcription_settings"] = {"elevenlabs": elevenlabs_settings}
 
             bot, error = create_bot(data=data, source=BotCreationSource.DASHBOARD, project=project)

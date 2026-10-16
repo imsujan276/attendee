@@ -42,7 +42,17 @@
     {% endfor %}
 
 
-    {% if not transcription.is_async %}
+    {% if not transcription.is_async and transcription.transcribes_after_meeting %}
+        {% if transcription.recording_state != RecordingStates.COMPLETE and transcription.recording_state != RecordingStates.FAILED %}
+            <div class="alert alert-info mt-3">
+                This bot transcribes after the call ends. The transcript will appear here shortly after the call.
+            </div>
+        {% elif transcription.state == RecordingTranscriptionStates.IN_PROGRESS %}
+            <div class="alert alert-info mt-3">
+                Transcribing the whole call. Refresh in a minute to see the transcript.
+            </div>
+        {% endif %}
+    {% elif not transcription.is_async %}
         {% if transcription.recording_state != RecordingStates.COMPLETE and transcription.recording_state != RecordingStates.FAILED %}
             {% if transcription.state == RecordingTranscriptionStates.IN_PROGRESS or transcription.state == RecordingTranscriptionStates.NOT_STARTED %}
                 <div class="alert alert-info mt-3">

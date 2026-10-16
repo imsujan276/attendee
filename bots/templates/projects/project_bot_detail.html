@@ -218,6 +218,11 @@
                 <p><strong>Deduplication Key:</strong> {{ bot.deduplication_key }}</p>
             {% endif %}
         </div>
+        {% for setting in settings_summary %}
+            <div class="col-12">
+                <p><strong>{{ setting.label }}:</strong> {{ setting.value }}</p>
+            </div>
+        {% endfor %}
     </div>
 
     <ul class="nav nav-tabs mb-3" role="tablist">

@@ -682,6 +682,11 @@ class RecordingAdditionalFiles(models.TextChoices):
     VIDEO_ONLY = "video_only"
 
 
+class ElevenLabsTranscriptionTimings(models.TextChoices):
+    LIVE = "live"
+    AFTER_MEETING = "after_meeting"
+
+
 class RecordingViews(models.TextChoices):
     SPEAKER_VIEW = "speaker_view"
     GALLERY_VIEW = "gallery_view"
@@ -790,6 +795,13 @@ class TranscriptionSettings:
 
     def elevenlabs_no_verbatim(self):
         return self._settings.get("elevenlabs", {}).get("no_verbatim", None)
+
+    def elevenlabs_transcription_timing(self):
+        return self._settings.get("elevenlabs", {}).get("transcription_timing", ElevenLabsTranscriptionTimings.LIVE)
+
+    # When true, the per-participant audio is transcribed in one pass after the meeting ends instead of utterance by utterance during the meeting
+    def transcribe_after_meeting(self):
+        return "elevenlabs" in self._settings and self.elevenlabs_transcription_timing() == ElevenLabsTranscriptionTimings.AFTER_MEETING
 
     def custom_async_additional_props(self):
         return self._settings.get("custom_async", {})
@@ -1985,6 +1997,13 @@ class BotEventManager:
         if event_sub_type != BotEventSubTypes.COULD_NOT_JOIN_MEETING_LEAVE_REQUESTED_BEFORE_BOT_JOINED:
             raise ValidationError(f"Event {BotEventTypes.type_to_api_code(BotEventTypes.COULD_NOT_JOIN)} with sub type {BotEventSubTypes.sub_type_to_api_code(event_sub_type)} not allowed when bot is in state {BotStates.state_to_api_code(old_state)}.")
 
+    @classmethod
+    def queue_post_meeting_transcription(cls, recording):
+        from bots.tasks.process_post_meeting_transcription_task import process_post_meeting_transcription
+
+        # Wait for the state transition to commit so the task sees the terminated recording
+        transaction.on_commit(lambda: process_post_meeting_transcription.delay(recording.id))
+
     # This method handles sets the state for recordings and credits for when the bot transitions to a post meeting state
     # It returns a dictionary of additional event metadata that should be added to the event
     @classmethod
@@ -1998,6 +2017,8 @@ class BotEventManager:
             raise ValidationError(f"Expected at most one in progress recording for bot {bot.object_id} in state {BotStates.state_to_api_code(new_state)}, but found {in_progress_recordings.count()}")
         for recording in in_progress_recordings:
             RecordingManager.terminate_recording(recording)
+            if new_state != BotStates.DATA_DELETED and bot.transcription_settings.transcribe_after_meeting():
+                cls.queue_post_meeting_transcription(recording)
         for failed_transcription_recording in bot.recordings.filter(transcription_state=RecordingTranscriptionStates.FAILED):
             # Collect all transcription errors
             if failed_transcription_recording.transcription_failure_data and failed_transcription_recording.transcription_failure_data.get("failure_reasons"):
@@ -2607,6 +2628,18 @@ class RecordingManager:
         recording.transcription_failure_data = failure_data
         recording.save()
 
+    # Used when the transcription runs after the recording has terminated, so nothing else will close it out
+    @classmethod
+    def finish_recording_transcription_if_no_utterances_in_progress(cls, recording: Recording):
+        if recording.utterances.filter(transcription__isnull=True, failure_data__isnull=True).exists():
+            return
+        failed_utterances = recording.utterances.filter(failure_data__isnull=False)
+        if failed_utterances.exists():
+            failure_reasons = list(failed_utterances.filter(failure_data__has_key="reason").values_list("failure_data__reason", flat=True).distinct())
+            RecordingManager.set_recording_transcription_failed(recording, failure_data={"failure_reasons": failure_reasons})
+        else:
+            RecordingManager.set_recording_transcription_complete(recording)
+
     @classmethod
     def is_terminal_state(cls, state: int):
         return state == RecordingStates.COMPLETE or state == RecordingStates.FAILED
@@ -2681,7 +2714,7 @@ class AsyncTranscription(models.Model):
 
     @property
     def use_grouped_utterances(self):
-        return self.transcription_provider in [TranscriptionProviders.ASSEMBLY_AI, TranscriptionProviders.DEEPGRAM]
+        return self.transcription_provider in [TranscriptionProviders.ASSEMBLY_AI, TranscriptionProviders.DEEPGRAM, TranscriptionProviders.ELEVENLABS]
 
 
 class AsyncTranscriptionManager:

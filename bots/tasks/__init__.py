@@ -3,6 +3,7 @@ from .deliver_webhook_task import deliver_webhook
 from .launch_adhoc_bot_task import launch_adhoc_bot
 from .launch_scheduled_bot_task import launch_scheduled_bot
 from .process_async_transcription_task import process_async_transcription
+from .process_post_meeting_transcription_task import process_post_meeting_transcription
 from .process_utterance_task import process_utterance
 from .refresh_zoom_oauth_connection_task import refresh_zoom_oauth_connection
 from .restart_bot_pod_task import restart_bot_pod
@@ -24,6 +25,7 @@ __all__ = [
     "sync_calendar",
     "autopay_charge",
     "process_async_transcription",
+    "process_post_meeting_transcription",
     "sync_zoom_oauth_connection",
     "refresh_zoom_oauth_connection",
     "validate_zoom_oauth_connections",

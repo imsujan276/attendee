@@ -4,8 +4,10 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-from bots.models import Utterance
+from bots.models import RecordingManager, Utterance, WebhookTriggerTypes
 from bots.transcription_utils import get_transcription_for_utterance_group, is_retryable_failure
+from bots.webhook_payloads import utterance_webhook_payload
+from bots.webhook_utils import trigger_webhook
 
 
 @shared_task(
@@ -52,6 +54,7 @@ def process_utterance_group_for_async_transcription(self, utterance_ids):
                     utterance.failure_data = failure_data
                     utterance.save()
                 logger.info(f"Transcription failed for utterances {utterance_ids}, failure data: {failure_data}")
+                finish_post_meeting_transcription_if_done(first_utterance)
                 return
 
         # Loop through the utterances and write the transcription to the utterance
@@ -60,3 +63,29 @@ def process_utterance_group_for_async_transcription(self, utterance_ids):
             utterance.save()
 
         logger.info(f"Transcription complete for utterances {utterance_ids}")
+
+        # Utterances without an async transcription are the recording's regular transcript, transcribed after the meeting
+        if first_utterance.async_transcription is None:
+            on_post_meeting_utterances_transcribed(utterances)
+            finish_post_meeting_transcription_if_done(first_utterance)
+
+
+def on_post_meeting_utterances_transcribed(utterances):
+    recording = utterances[0].recording
+    for utterance in utterances:
+        # Free up the audio once it's transcribed, unless the user wants to keep it for async transcriptions
+        if utterance.audio_chunk and not recording.bot.record_async_transcription_audio_chunks():
+            utterance.audio_chunk.clear_audio_data()
+
+        if utterance.transcription.get("transcript"):
+            trigger_webhook(
+                webhook_trigger_type=WebhookTriggerTypes.TRANSCRIPT_UPDATE,
+                bot=recording.bot,
+                payload=utterance_webhook_payload(utterance),
+            )
+
+
+def finish_post_meeting_transcription_if_done(utterance):
+    if utterance.async_transcription is not None:
+        return
+    RecordingManager.finish_recording_transcription_if_no_utterances_in_progress(utterance.recording)

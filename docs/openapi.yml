@@ -2523,6 +2523,16 @@ components:
                   type: boolean
                   description: Whether to remove filler words, false starts and non-speech
                     sounds from the transcription. Only supported by scribe_v2.
+                transcription_timing:
+                  type: string
+                  enum:
+                  - live
+                  - after_meeting
+                  description: When to transcribe. 'live' (the default) transcribes
+                    each utterance during the meeting. 'after_meeting' transcribes all
+                    the audio together once the meeting ends, which is more accurate
+                    when the language is detected automatically, but no transcript is
+                    available until then.
               required:
               - model_id
               additionalProperties: false

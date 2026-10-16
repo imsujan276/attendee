@@ -1567,6 +1567,10 @@ class BotController:
         if not self.save_utterances_for_individual_audio_chunks():
             return
 
+        # The audio chunks will be transcribed together once the meeting ends
+        if self.bot_in_db.transcription_settings.transcribe_after_meeting():
+            return
+
         # Create new utterance record
         utterance = Utterance.objects.create(
             source=Utterance.Sources.PER_PARTICIPANT_AUDIO,

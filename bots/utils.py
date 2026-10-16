@@ -682,12 +682,56 @@ def generate_speaker_timeline_for_bot_detail_view(recording):
     return result
 
 
+RECORDING_FORMAT_DISPLAY_NAMES = {
+    "mp4": "Video and audio (MP4)",
+    "webm": "Video and audio (WebM)",
+    "mp3": "Audio only (MP3)",
+    "none": "No recording",
+}
+
+RECORDING_ADDITIONAL_FILE_DISPLAY_NAMES = {
+    "audio_only": "audio only (MP3)",
+    "video_only": "video only (MP4)",
+}
+
+
+# Summarizes the recording and transcription choices the bot was created with, for the bot detail page
+def generate_settings_summary_for_bot_detail_view(bot):
+    summary = []
+
+    recording_format = bot.recording_format()
+    recording_display = RECORDING_FORMAT_DISPLAY_NAMES.get(recording_format, recording_format)
+    additional_files = [RECORDING_ADDITIONAL_FILE_DISPLAY_NAMES.get(f, f) for f in bot.recording_additional_files()]
+    if additional_files:
+        recording_display += ", also saving " + " and ".join(additional_files)
+    summary.append({"label": "Recording", "value": recording_display})
+
+    recording = bot.recordings.filter(is_default_recording=True).first()
+    if recording and recording.transcription_provider:
+        transcription_details = [recording.get_transcription_provider_display()]
+        transcription_settings = bot.transcription_settings
+        if recording.transcription_provider == TranscriptionProviders.ELEVENLABS:
+            if transcription_settings.elevenlabs_model_id():
+                transcription_details.append(transcription_settings.elevenlabs_model_id())
+            transcription_details.append("after the call ends" if transcription_settings.transcribe_after_meeting() else "live, during the call")
+            transcription_details.append(f"language {transcription_settings.elevenlabs_language_code()}" if transcription_settings.elevenlabs_language_code() else "language detected automatically")
+            if transcription_settings.elevenlabs_no_verbatim():
+                transcription_details.append("filler words removed")
+            if transcription_settings.elevenlabs_tag_audio_events():
+                transcription_details.append("audio events tagged")
+        summary.append({"label": "Transcription", "value": " · ".join(transcription_details)})
+
+    return summary
+
+
 def generate_recordings_json_for_bot_detail_view(bot):
     # Process recordings and utterances
     recordings_data = []
     for recording in bot.recordings.all():
+        transcribes_after_meeting = bot.transcription_settings.transcribe_after_meeting()
         realtime_transcription = {
-            "label": "Realtime",
+            "label": "After call" if transcribes_after_meeting else "Realtime",
+            "transcribes_after_meeting": transcribes_after_meeting,
             "state": recording.transcription_state,
             "recording_state": recording.state,
             "provider_display": recording.get_transcription_provider_display() if recording.transcription_provider else None,

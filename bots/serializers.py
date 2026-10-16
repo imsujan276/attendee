@@ -411,6 +411,11 @@ TRANSCRIPTION_SETTINGS_SCHEMA = {
                 },
                 "tag_audio_events": {"type": "boolean", "description": "Whether to tag audio events like 'laughter' in the transcription."},
                 "no_verbatim": {"type": "boolean", "description": "Whether to remove filler words, false starts and non-speech sounds from the transcription. Only supported by scribe_v2."},
+                "transcription_timing": {
+                    "type": "string",
+                    "enum": ["live", "after_meeting"],
+                    "description": "When to transcribe. 'live' (the default) transcribes each utterance during the meeting. 'after_meeting' transcribes all the audio together once the meeting ends, which is more accurate when the language is detected automatically, but no transcript is available until then.",
+                },
             },
             "required": ["model_id"],
             "additionalProperties": False,

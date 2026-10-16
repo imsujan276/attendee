@@ -248,6 +248,8 @@ def get_transcription_for_utterance_group(utterances):
             get_transcription_from_mp3_method = get_transcription_via_assemblyai_from_mp3
         elif transcription_provider == TranscriptionProviders.DEEPGRAM:
             get_transcription_from_mp3_method = get_transcription_via_deepgram_from_mp3
+        elif transcription_provider == TranscriptionProviders.ELEVENLABS:
+            get_transcription_from_mp3_method = get_transcription_via_elevenlabs_from_mp3
         else:
             raise Exception(f"Unknown or unsupported transcription provider: {transcription_provider}")
 
@@ -416,6 +418,101 @@ def get_transcription_via_assemblyai_from_mp3(
 
     # If we've reached here, we've timed out
     return None, {"reason": TranscriptionFailureReasons.TIMED_OUT, "step": "transcribe_result_poll"}
+
+
+# ElevenLabs replies only once the whole file is transcribed, so the read timeout has to cover the processing time.
+# It scales with the audio length so that long files aren't cut off, while a hung connection is still abandoned
+# well before the celery task's one hour time limit.
+def get_elevenlabs_request_timeout_seconds(duration_ms: int) -> tuple[float, float]:
+    connect_timeout_seconds = 10
+    min_read_timeout_seconds = float(os.getenv("ELEVENLABS_TRANSCRIPTION_MIN_TIMEOUT_SECONDS", 5 * 60))
+    read_timeout_seconds_per_audio_second = float(os.getenv("ELEVENLABS_TRANSCRIPTION_TIMEOUT_SECONDS_PER_AUDIO_SECOND", 1))
+    max_read_timeout_seconds = 55 * 60
+
+    read_timeout_seconds = max(min_read_timeout_seconds, (duration_ms / 1000) * read_timeout_seconds_per_audio_second)
+    return connect_timeout_seconds, min(read_timeout_seconds, max_read_timeout_seconds)
+
+
+def get_transcription_via_elevenlabs_from_mp3(
+    retrieve_mp3_data_callback: Callable[[], bytes],
+    duration_ms: int,
+    identifier: str,
+    transcription_settings: TranscriptionSettings,
+    recording: Recording,
+    min_language_probability: float | None = None,
+):
+    """
+    Transcribe an MP3 with ElevenLabs.
+
+    If min_language_probability is set and ElevenLabs is less confident than that about the detected
+    language, an empty transcription is returned. This filters out noise in short clips, but should not
+    be used for long audio where several languages may be spoken.
+    """
+    elevenlabs_credentials_record = recording.bot.project.credentials.filter(credential_type=Credentials.CredentialTypes.ELEVENLABS).first()
+    if not elevenlabs_credentials_record:
+        return None, {"reason": TranscriptionFailureReasons.CREDENTIALS_NOT_FOUND}
+
+    elevenlabs_credentials = elevenlabs_credentials_record.get_credentials()
+    if not elevenlabs_credentials:
+        return None, {"reason": TranscriptionFailureReasons.CREDENTIALS_NOT_FOUND}
+
+    api_key = elevenlabs_credentials.get("api_key")
+    if not api_key:
+        return None, {"reason": TranscriptionFailureReasons.CREDENTIALS_NOT_FOUND, "error": "api_key not in credentials"}
+
+    url = "https://api.elevenlabs.io/v1/speech-to-text"
+    headers = {
+        "xi-api-key": api_key,
+    }
+
+    files = {"file": ("audio.mp3", retrieve_mp3_data_callback(), "audio/mpeg")}
+
+    data = {}
+    if transcription_settings.elevenlabs_model_id():
+        data["model_id"] = transcription_settings.elevenlabs_model_id()
+
+    if transcription_settings.elevenlabs_language_code():
+        data["language_code"] = transcription_settings.elevenlabs_language_code()
+
+    data["tag_audio_events"] = transcription_settings.elevenlabs_tag_audio_events()
+
+    if transcription_settings.elevenlabs_no_verbatim() is not None:
+        data["no_verbatim"] = transcription_settings.elevenlabs_no_verbatim()
+
+    try:
+        response = requests.post(url, headers=headers, files=files, data=data if data else None, timeout=get_elevenlabs_request_timeout_seconds(duration_ms))
+
+        if response.status_code == 401:
+            return None, {"reason": TranscriptionFailureReasons.CREDENTIALS_INVALID}
+
+        if response.status_code == 429:
+            return None, {"reason": TranscriptionFailureReasons.RATE_LIMIT_EXCEEDED, "status_code": response.status_code}
+
+        if response.status_code != 200:
+            logger.error(f"ElevenLabs transcription failed for {identifier} with status code {response.status_code}: {response.text}")
+            return None, {"reason": TranscriptionFailureReasons.TRANSCRIPTION_REQUEST_FAILED, "status_code": response.status_code, "response_text": response.text}
+
+        result = response.json()
+        logger.info(f"ElevenLabs transcription completed successfully for {identifier}")
+
+        if min_language_probability is not None and result.get("language_probability", 0.0) < min_language_probability:
+            logger.info(f"ElevenLabs transcription skipped for {identifier} because the language probability was less than {min_language_probability}")
+            return {"transcript": "", "words": []}, None
+
+        # ElevenLabs returns the whitespace between words as separate "spacing" entries, which aren't words
+        words = [{"word": word.get("text"), "start": word.get("start"), "end": word.get("end")} for word in result.get("words", []) if word.get("type") != "spacing"]
+
+        return {"transcript": result.get("text", ""), "words": words, "language": result.get("language_code", None)}, None
+
+    except requests.exceptions.Timeout as e:
+        logger.error(f"ElevenLabs transcription request timed out for {identifier}: {str(e)}")
+        return None, {"reason": TranscriptionFailureReasons.TIMED_OUT, "error": str(e)}
+    except requests.exceptions.RequestException as e:
+        logger.error(f"ElevenLabs transcription request failed for {identifier}: {str(e)}")
+        return None, {"reason": TranscriptionFailureReasons.TRANSCRIPTION_REQUEST_FAILED, "error": str(e)}
+    except json.JSONDecodeError as e:
+        logger.error(f"ElevenLabs transcription response parsing failed for {identifier}: {str(e)}")
+        return None, {"reason": TranscriptionFailureReasons.TRANSCRIPTION_REQUEST_FAILED, "error": f"Invalid JSON response: {str(e)}"}
 
 
 def get_transcription_via_deepgram_from_mp3(

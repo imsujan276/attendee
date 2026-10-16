@@ -46,13 +46,18 @@ def create_utterances_for_transcription_without_using_groups(async_transcription
 
 
 def create_utterances_for_transcription_using_groups(async_transcription):
-    recording = async_transcription.recording
+    utterances = create_utterances_for_audio_chunks(async_transcription.recording, async_transcription=async_transcription)
+    queue_utterance_groups_for_transcription(utterances)
 
+    # After the utterances have been created and queued for transcription, set the recording artifact to in progress
+    AsyncTranscriptionManager.set_async_transcription_in_progress(async_transcription)
+
+
+def create_utterances_for_audio_chunks(recording, async_transcription):
     # Get all the audio chunks for the recording, sorted by start time
     # Use defer() to exclude large audio_blob field
     audio_chunks = list(recording.audio_chunks.defer("audio_blob").order_by("timestamp_ms"))
 
-    # Create all utterances first
     utterances = []
     for audio_chunk in audio_chunks:
         utterance = Utterance.objects.create(
@@ -65,7 +70,10 @@ def create_utterances_for_transcription_using_groups(async_transcription):
             duration_ms=audio_chunk.duration_ms,
         )
         utterances.append(utterance)
+    return utterances
 
+
+def queue_utterance_groups_for_transcription(utterances):
     # Group utterances into evenly-sized groups based on total duration
     # Calculate number of groups needed, then divide duration evenly.
     # This avoids creating tiny groups.
@@ -105,9 +113,6 @@ def create_utterances_for_transcription_using_groups(async_transcription):
         utterance_ids = [u.id for u in group]
         process_utterance_group_for_async_transcription.apply_async(args=[utterance_ids], countdown=group_task_delay_seconds)
         group_task_delay_seconds += 1
-
-    # After the utterances have been created and queued for transcription, set the recording artifact to in progress
-    AsyncTranscriptionManager.set_async_transcription_in_progress(async_transcription)
 
 
 def terminate_transcription(async_transcription):
