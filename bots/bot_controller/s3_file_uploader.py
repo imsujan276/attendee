@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 import threading
 from pathlib import Path
 
@@ -43,8 +44,11 @@ class S3FileUploader:
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
 
-            # Upload the file using S3's multipart upload functionality
-            self.s3_client.upload_file(str(file_path), self.bucket, self.filename)
+            # Upload the file using S3's multipart upload functionality.
+            # Set the content type so browsers play the recording instead of downloading it as binary/octet-stream.
+            content_type, _ = mimetypes.guess_type(self.filename)
+            extra_args = {"ContentType": content_type} if content_type else None
+            self.s3_client.upload_file(str(file_path), self.bucket, self.filename, ExtraArgs=extra_args)
 
             logger.info(f"Successfully uploaded {file_path} to s3://{self.bucket}/{self.filename}")
 

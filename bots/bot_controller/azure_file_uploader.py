@@ -1,8 +1,9 @@
 import logging
+import mimetypes
 import threading
 from pathlib import Path
 
-from azure.storage.blob import BlobClient, BlobServiceClient
+from azure.storage.blob import BlobClient, BlobServiceClient, ContentSettings
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -63,10 +64,14 @@ class AzureFileUploader:
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
 
+            # Set the content type so browsers play the recording instead of downloading it as application/octet-stream
+            content_type, _ = mimetypes.guess_type(self.filename)
+            content_settings = ContentSettings(content_type=content_type) if content_type else None
+
             # Upload the file; let the SDK handle chunking under the hood.
             with file_path.open("rb") as f:
                 # overwrite=True to mirror typical "upsert" behavior similar to S3 put
-                self.blob_client.upload_blob(f, overwrite=True)
+                self.blob_client.upload_blob(f, overwrite=True, content_settings=content_settings)
 
             account_url = self.blob_client.url.split(f"/{self.container}/")[0]
             logger.info(f"Successfully uploaded {file_path} to {account_url}/{self.container}/{self.filename}")
