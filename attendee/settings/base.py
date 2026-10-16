@@ -331,6 +331,10 @@ else:
     # Deep copy the DEFAULT_STORAGE_BACKEND
     RECORDING_STORAGE_BACKEND = copy.deepcopy(DEFAULT_STORAGE_BACKEND)
     RECORDING_STORAGE_BACKEND["OPTIONS"]["bucket_name"] = AWS_RECORDING_STORAGE_BUCKET_NAME
+    # Recording URLs are signed and expire after 30 minutes. With permanent links they are plain URLs that never expire,
+    # which only work if the recording files are publicly readable, e.g. through a bucket policy.
+    if os.getenv("AWS_RECORDING_STORAGE_USE_PERMANENT_LINKS", "false") == "true":
+        RECORDING_STORAGE_BACKEND["OPTIONS"]["querystring_auth"] = False
 
     AUDIO_CHUNK_STORAGE_BACKEND = copy.deepcopy(DEFAULT_STORAGE_BACKEND)
     AUDIO_CHUNK_STORAGE_BACKEND["OPTIONS"]["bucket_name"] = AWS_AUDIO_CHUNK_STORAGE_BUCKET_NAME

@@ -64,6 +64,7 @@ This document lists all supported environment variables for the Attendee applica
 | `AWS_RECORDING_STORAGE_BUCKET_NAME` | String | **Required** | S3 bucket name for storing meeting recordings. |
 | `AWS_AUDIO_CHUNK_STORAGE_BUCKET_NAME` | String | (Uses recording bucket) | S3 bucket name for storing audio chunks. Falls back to `AWS_RECORDING_STORAGE_BUCKET_NAME` if not set. |
 | `AWS_BOT_DEBUG_SCREENSHOT_STORAGE_BUCKET_NAME` | String | (Uses recording bucket) | S3 bucket name for storing bot debug screenshots. Falls back to `AWS_RECORDING_STORAGE_BUCKET_NAME` if not set. |
+| `AWS_RECORDING_STORAGE_USE_PERMANENT_LINKS` | Boolean | `false` | Return plain recording URLs that never expire, instead of signed URLs that expire after 30 minutes. Anyone with a link can download the recording, and a link can't be revoked. The recording files must be publicly readable, e.g. with a bucket policy that allows `s3:GetObject` on `arn:aws:s3:::<bucket>/bot_*-rec_*` (on AWS, Block Public Access must also allow it). Only recordings are affected; audio chunks and debug screenshots keep signed URLs. |
 | `USE_IRSA_FOR_S3_STORAGE` | Boolean | `false` | Use IRSA (IAM Roles for Service Accounts) for S3 authentication in EKS. Set to `true` when running on Kubernetes with IRSA. |
 
 ### Azure Blob Storage Configuration

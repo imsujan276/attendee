@@ -203,7 +203,7 @@ This webhook is sent after the bot has ended and every utterance has been transc
 
 With live transcription, the bot waits up to 5 minutes after the meeting for utterances that are still being transcribed. If some are still not done, the webhook is sent with `state` set to `failed` and the reason `utterances_still_in_progress_when_recording_terminated`. Once those utterances finish, it is sent again with the final state and the full transcript, so use the latest delivery for a bot.
 
-With S3 storage, the recording URL is signed and expires 30 minutes after the webhook is created. If it has expired by the time you download the file, call the recording endpoint for a new URL.
+With S3 storage, the recording URL is signed and expires 30 minutes after the webhook is created, unless `AWS_RECORDING_STORAGE_USE_PERMANENT_LINKS` is turned on. If it has expired by the time you download the file, call the recording endpoint for a new URL.
 
 ### Payload for `chat_messages.update` trigger
 
