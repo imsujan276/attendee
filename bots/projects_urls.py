@@ -32,9 +32,19 @@ urlpatterns = [
         name="create-bot",
     ),
     path(
+        "<str:object_id>/bots/delete",
+        projects_views.BulkDeleteBotsView.as_view(),
+        name="bulk-delete-bots",
+    ),
+    path(
         "<str:object_id>/bots/<str:bot_object_id>",
         projects_views.ProjectBotDetailView.as_view(),
         name="project-bot-detail",
+    ),
+    path(
+        "<str:object_id>/bots/<str:bot_object_id>/delete",
+        projects_views.DeleteBotView.as_view(),
+        name="delete-bot",
     ),
     path(
         "<str:object_id>/app_sessions/<str:bot_object_id>",
@@ -95,6 +105,11 @@ urlpatterns = [
         "<str:object_id>/settings/credentials/",
         projects_views.CreateCredentialsView.as_view(),
         name="create-credentials",
+    ),
+    path(
+        "<str:object_id>/settings/credentials/active-transcription-provider/",
+        projects_views.SetActiveTranscriptionProviderView.as_view(),
+        name="set-active-transcription-provider",
     ),
     path(
         "<str:object_id>/settings/credentials/delete/",

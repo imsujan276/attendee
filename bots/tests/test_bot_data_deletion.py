@@ -287,6 +287,23 @@ class TestBotDataDeletion(TransactionTestCase):
         for recording in Recording.objects.filter(bot=self.bot1):
             self.assertFalse(recording.file)
 
+    def test_delete_data_deletes_additional_recording_files(self):
+        """Test that delete_data deletes the audio only and video only files along with the recording file"""
+        self.recording1.audio_only_file.save("test1-audio-only.mp3", ContentFile(b"test audio only"))
+        self.recording1.video_only_file.save("test1-video-only.mp4", ContentFile(b"test video only"))
+
+        self.bot1.delete_data()
+
+        self.assertIn("test1.mp4", self.deleted_file_names)
+        self.assertIn("test1-audio-only.mp3", self.deleted_file_names)
+        self.assertIn("test1-video-only.mp4", self.deleted_file_names)
+        self.assertNotIn("test2.mp4", self.deleted_file_names)
+
+        self.recording1.refresh_from_db()
+        self.assertFalse(self.recording1.file)
+        self.assertFalse(self.recording1.audio_only_file)
+        self.assertFalse(self.recording1.video_only_file)
+
     def test_fatal_error_to_data_deleted_transition(self):
         """Test that a bot in FATAL_ERROR state can transition to DATA_DELETED"""
         # Change bot state to FATAL_ERROR

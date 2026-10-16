@@ -161,10 +161,17 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         {% if bot.session_type == SessionTypes.BOT %}
             <h2 class="mb-0">Bot Details</h2>
-            <a href="{% url 'projects:project-bots' project.object_id %}" 
-            class="btn btn-outline-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Bots
-            </a>
+            <div class="d-flex gap-2">
+                <span {% if not bot_can_be_deleted %}title="A bot can be deleted once it has finished" tabindex="0"{% endif %}>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteBotModal" {% if not bot_can_be_deleted %}disabled{% endif %}>
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </span>
+                <a href="{% url 'projects:project-bots' project.object_id %}" 
+                class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Bots
+                </a>
+            </div>
         {% endif %}
         {% if bot.session_type == SessionTypes.APP_SESSION %}
             <h2 class="mb-0">App Session Details</h2>
@@ -174,6 +181,8 @@
             </a>
         {% endif %}
     </div>
+
+    {% include 'projects/partials/_messages.html' %}
 
     {% if not can_view_recording_content %}
         <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
@@ -480,9 +489,7 @@
                             {% for key, value in bot.metadata.items %}
                                 <tr>
                                     <td>{{ key }}</td>
-                                    <td>
-                                        {{ value }}
-                                    </td>
+                                    <td style="white-space: pre-wrap;">{{ value|metadata_value }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -688,4 +695,8 @@
 
     </div>
 </div>
+{% if bot.session_type == SessionTypes.BOT %}
+{% url 'projects:delete-bot' project.object_id bot.object_id as delete_bot_url %}
+{% include 'projects/partials/bot_delete_modal.html' with delete_bot_form_action=delete_bot_url %}
+{% endif %}
 {% endblock %}

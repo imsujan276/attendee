@@ -1,0 +1,30 @@
+<div class="card mt-4 border-primary" id="active-transcription-provider-container">
+    <div class="card-header">
+        <h5 class="mb-0">Active Transcription Provider</h5>
+    </div>
+    <div class="card-body">
+        <p>Used for bots created without transcription settings, from the dashboard or the API. A bot that sets its own transcription settings keeps them.</p>
+        <form hx-post="{% url 'projects:set-active-transcription-provider' project.object_id %}"
+            hx-trigger="change"
+            hx-target="#active-transcription-provider-container"
+            hx-swap="outerHTML"
+        >
+            {% csrf_token %}
+            <select class="form-select w-auto" id="id_active_transcription_provider" name="active_transcription_provider" aria-label="Active transcription provider">
+                <option value="" {% if not active_transcription_provider_option %}selected{% endif %}>Platform default (Meet / Teams captions, Deepgram for Zoom)</option>
+                {% for option in active_transcription_provider_options %}
+                    <option value="{{ option.key }}" {% if option.key == active_transcription_provider_option.key %}selected{% endif %}>
+                        {{ option.label }}{% if not option.has_credentials %} (no credentials){% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        </form>
+        {% if active_transcription_provider_error %}
+            <div class="text-danger mt-2">{{ active_transcription_provider_error }}</div>
+        {% elif active_transcription_provider_option and not active_transcription_provider_option.has_credentials %}
+            <div class="text-danger mt-2">{{ active_transcription_provider_option.label }} has no credentials, so bots use the platform default until you add them below.</div>
+        {% elif active_transcription_provider_saved %}
+            <div class="text-success mt-2">Saved</div>
+        {% endif %}
+    </div>
+</div>

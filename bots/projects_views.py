@@ -7,6 +7,7 @@ import uuid
 import stripe
 from allauth.account.utils import send_email_confirmation
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models, transaction
@@ -15,6 +16,7 @@ from django.db.models.functions import Cast
 from django.http import Http404, HttpResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.generic import ListView
 
@@ -27,9 +29,11 @@ from .instance_health_alert_manager import get_alert_configs, update_alert_setti
 from .instance_health_utils import DEFAULT_WINDOW, get_instance_health_data, user_can_view_instance_health
 from .launch_bot_utils import launch_adhoc_bot_from_view
 from .models import (
+    ACTIVE_TRANSCRIPTION_PROVIDERS,
     ApiKey,
     Bot,
     BotEvent,
+    BotEventManager,
     BotEventSubTypes,
     BotEventTypes,
     BotLogin,
@@ -472,6 +476,37 @@ class CreateCredentialsView(LoginRequiredMixin, ProjectUrlContextMixin, View):
             return HttpResponse(str(e), status=400)
 
 
+def get_active_transcription_provider_context(project):
+    configured_credential_types = set(project.credentials.values_list("credential_type", flat=True))
+    options = [{"key": key, "label": provider["label"], "has_credentials": provider["credential_type"] in configured_credential_types} for key, provider in ACTIVE_TRANSCRIPTION_PROVIDERS.items()]
+    active_option = next((option for option in options if option["key"] == project.active_transcription_provider), None)
+    return {
+        "active_transcription_provider_options": options,
+        "active_transcription_provider_option": active_option,
+    }
+
+
+class SetActiveTranscriptionProviderView(LoginRequiredMixin, ProjectUrlContextMixin, View):
+    def post(self, request, object_id):
+        project = get_project_for_user(user=request.user, project_object_id=object_id)
+        context = self.get_project_context(object_id, project)
+
+        provider_key = request.POST.get("active_transcription_provider") or None
+        provider = ACTIVE_TRANSCRIPTION_PROVIDERS.get(provider_key)
+        if provider_key and not provider:
+            return HttpResponse("Invalid transcription provider", status=400)
+
+        if provider and not project.credentials.filter(credential_type=provider["credential_type"]).exists():
+            context["active_transcription_provider_error"] = f"Add {provider['label']} credentials below before making it the active provider."
+        else:
+            project.active_transcription_provider = provider_key
+            project.save(update_fields=["active_transcription_provider", "updated_at"])
+            context["active_transcription_provider_saved"] = True
+
+        context.update(get_active_transcription_provider_context(project))
+        return render(request, "projects/partials/active_transcription_provider.html", context)
+
+
 class DeleteCredentialsView(LoginRequiredMixin, ProjectUrlContextMixin, View):
     def post(self, request, object_id):
         project = get_project_for_user(user=request.user, project_object_id=object_id)
@@ -564,6 +599,8 @@ class ProjectCredentialsView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                 "livekit_credential_type": Credentials.CredentialTypes.LIVEKIT,
             }
         )
+
+        context.update(get_active_transcription_provider_context(project))
 
         return render(request, "projects/project_credentials.html", context)
 
@@ -1012,6 +1049,7 @@ class ProjectBotDetailView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                 "max_redis_connection_count": max_redis_connection_count,
                 "network_stats": network_stats,
                 "public_ip": public_ip,
+                "bot_can_be_deleted": bot.state in BotStates.post_meeting_states(),
             }
         )
 
@@ -1518,6 +1556,13 @@ class CreateBotView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                     elevenlabs_settings["transcription_timing"] = ElevenLabsTranscriptionTimings.AFTER_MEETING
                 data["transcription_settings"] = {"elevenlabs": elevenlabs_settings}
 
+            metadata = (request.POST.get("metadata") or "").strip()
+            if metadata:
+                try:
+                    data["metadata"] = json.loads(metadata)
+                except json.JSONDecodeError:
+                    return HttpResponse(json.dumps({"metadata": ["Metadata must be valid JSON"]}), status=400)
+
             bot, error = create_bot(data=data, source=BotCreationSource.DASHBOARD, project=project)
             if error:
                 return HttpResponse(json.dumps(error), status=400)
@@ -1849,3 +1894,79 @@ class DeleteBotLoginView(LoginRequiredMixin, ProjectUrlContextMixin, View):
         context = self.get_project_context(object_id, project)
         context.update(get_bot_login_group_context(project))
         return render_bot_login_groups_partial(request, platform, context)
+
+
+def delete_bots(bots, remove):
+    """Deletes the data of each finished bot, or removes the bot entirely. Bots that are still running are skipped."""
+    counts = {"deleted": 0, "skipped": 0, "failed": 0}
+    for bot in bots:
+        if remove:
+            can_delete = bot.state in BotStates.post_meeting_states()
+        else:
+            can_delete = BotEventManager.event_can_be_created_for_state(BotEventTypes.DATA_DELETED, bot.state)
+        if not can_delete:
+            counts["skipped"] += 1
+            continue
+
+        try:
+            if remove:
+                bot.remove()
+            else:
+                bot.delete_data()
+            counts["deleted"] += 1
+        except Exception:
+            logger.exception(f"Error deleting bot {bot.object_id} (remove={remove})")
+            counts["failed"] += 1
+    return counts
+
+
+def add_delete_bots_message(request, counts, remove):
+    parts = []
+    if counts["deleted"]:
+        parts.append(f"Removed {counts['deleted']} bot(s)." if remove else f"Deleted the data of {counts['deleted']} bot(s).")
+    if counts["skipped"]:
+        parts.append(f"Skipped {counts['skipped']} that {'are still running' if remove else 'are still running or already have their data deleted'}.")
+    if counts["failed"]:
+        parts.append(f"{counts['failed']} couldn't be deleted, see the logs for details.")
+
+    if counts["failed"]:
+        messages.error(request, " ".join(parts))
+    elif counts["deleted"]:
+        messages.success(request, " ".join(parts))
+    else:
+        messages.warning(request, " ".join(parts) or "No bots were selected.")
+
+
+def bot_list_url_name(session_type):
+    return "projects:project-app-sessions" if session_type == SessionTypes.APP_SESSION else "projects:project-bots"
+
+
+class DeleteBotView(LoginRequiredMixin, ProjectUrlContextMixin, View):
+    def post(self, request, object_id, bot_object_id):
+        project = get_project_for_user(user=request.user, project_object_id=object_id)
+        bot = get_object_or_404(Bot, object_id=bot_object_id, project=project)
+        remove = request.POST.get("mode") == "remove"
+
+        counts = delete_bots([bot], remove=remove)
+        add_delete_bots_message(request, counts, remove)
+
+        if remove and counts["deleted"]:
+            return redirect(bot_list_url_name(bot.session_type), object_id=object_id)
+        detail_url_name = "projects:project-app-session-detail" if bot.session_type == SessionTypes.APP_SESSION else "projects:project-bot-detail"
+        return redirect(detail_url_name, object_id=object_id, bot_object_id=bot_object_id)
+
+
+class BulkDeleteBotsView(LoginRequiredMixin, ProjectUrlContextMixin, View):
+    def post(self, request, object_id):
+        project = get_project_for_user(user=request.user, project_object_id=object_id)
+        bots = Bot.objects.filter(project=project, object_id__in=request.POST.getlist("bot_ids"))
+        remove = request.POST.get("mode") == "remove"
+
+        add_delete_bots_message(request, delete_bots(bots, remove=remove), remove)
+
+        # Go back to the list the bots were selected from, keeping its filters and page
+        next_url = request.POST.get("next")
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return redirect(next_url)
+        return redirect("projects:project-bots", object_id=object_id)
+

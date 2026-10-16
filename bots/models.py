@@ -45,6 +45,10 @@ class Project(models.Model):
         help_text="Per-project concurrent bots limit. If null, the global CONCURRENT_BOTS_LIMIT setting is used.",
     )
 
+    # Transcription provider for bots created without transcription_settings, stored as its
+    # transcription_settings key, e.g. "elevenlabs". If null, the per-platform defaults are used.
+    active_transcription_provider = models.CharField(max_length=32, null=True, blank=True)
+
     @classmethod
     def accessible_to(cls, user):
         if not user.is_active:
@@ -60,6 +64,17 @@ class Project(models.Model):
         if self.concurrent_bots_limit_override is not None:
             return self.concurrent_bots_limit_override
         return settings.CONCURRENT_BOTS_LIMIT
+
+    def active_transcription_provider_label(self):
+        provider = ACTIVE_TRANSCRIPTION_PROVIDERS.get(self.active_transcription_provider)
+        return provider["label"] if provider else None
+
+    def default_transcription_settings(self):
+        """Transcription settings for bots created without any, or None to use the per-platform defaults."""
+        provider = ACTIVE_TRANSCRIPTION_PROVIDERS.get(self.active_transcription_provider)
+        if not provider or not self.credentials.filter(credential_type=provider["credential_type"]).exists():
+            return None
+        return {self.active_transcription_provider: provider["default_settings"]()}
 
     def save(self, *args, **kwargs):
         if not self.object_id:
@@ -930,6 +945,16 @@ class Bot(models.Model):
 
             BotEventManager.create_event(bot=self, event_type=BotEventTypes.DATA_DELETED)
 
+    def remove(self):
+        """Deletes the bot's data and then the bot itself. Billing records are kept, but no longer point to the bot."""
+        if self.state not in BotStates.post_meeting_states():
+            raise ValueError("Bot is not in a state where it can be removed")
+
+        with transaction.atomic():
+            self.ensure_data_deleted()
+            self.credit_transactions.update(bot=None)
+            self.delete()
+
     # This method performs the actual delete queries for the delete_data operation.
     # It does not set the bot's state to DATA_DELETED.
     # It is also used by the finalize_bot_data_deletion management command to finalize the deletion process.
@@ -947,9 +972,10 @@ class Bot(models.Model):
             recording.audio_chunks.all().delete()
             recording.utterances.all().delete()
 
-            # Delete the actual recording file if it exists
-            if recording.file and recording.file.name:
-                recording.file.delete()
+            # Delete the recording file and any additional files made from it
+            for recording_file in [recording.file, recording.audio_only_file, recording.video_only_file]:
+                if recording_file and recording_file.name:
+                    recording_file.delete()
 
         # Delete all participants
         self.participants.all().delete()
@@ -2937,6 +2963,18 @@ class Credentials(models.Model):
 
     def __str__(self):
         return f"{self.project.name} - {self.get_credential_type_display()}"
+
+
+# Providers a project can make active, keyed by their transcription_settings key
+ACTIVE_TRANSCRIPTION_PROVIDERS = {
+    "deepgram": {"label": "Deepgram", "credential_type": Credentials.CredentialTypes.DEEPGRAM, "default_settings": lambda: {"language": "multi"}},
+    "gladia": {"label": "Gladia", "credential_type": Credentials.CredentialTypes.GLADIA, "default_settings": lambda: {}},
+    "openai": {"label": "OpenAI", "credential_type": Credentials.CredentialTypes.OPENAI, "default_settings": lambda: {"model": os.getenv("OPENAI_MODEL_NAME", "gpt-4o-transcribe")}},
+    "assembly_ai": {"label": "Assembly AI", "credential_type": Credentials.CredentialTypes.ASSEMBLY_AI, "default_settings": lambda: {}},
+    "sarvam": {"label": "Sarvam", "credential_type": Credentials.CredentialTypes.SARVAM, "default_settings": lambda: {}},
+    "elevenlabs": {"label": "ElevenLabs", "credential_type": Credentials.CredentialTypes.ELEVENLABS, "default_settings": lambda: {"model_id": "scribe_v2"}},
+    "kyutai": {"label": "Kyutai", "credential_type": Credentials.CredentialTypes.KYUTAI, "default_settings": lambda: {}},
+}
 
 
 class MediaBlob(models.Model):

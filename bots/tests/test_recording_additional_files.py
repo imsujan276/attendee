@@ -8,7 +8,7 @@ from django.urls import reverse
 from accounts.models import Organization, User, UserRole
 from bots.bot_controller.bot_controller import BotController
 from bots.bots_api_utils import BotCreationSource, create_bot
-from bots.models import Bot, Project, Recording
+from bots.models import Bot, Credentials, Project, Recording, TranscriptionProviders
 from bots.serializers import RecordingSerializer
 
 
@@ -138,6 +138,82 @@ class TestSaveAdditionalRecordingFiles(TestCase):
         self.assertEqual(self.recording.audio_only_file.name, "")
 
 
+class TestActiveTranscriptionProvider(TestCase):
+    def setUp(self):
+        organization = Organization.objects.create(name="Test Organization")
+        self.project = Project.objects.create(name="Test Project", organization=organization)
+
+    def create_bot(self, **data):
+        return create_bot(data={"meeting_url": "https://meet.google.com/abc-defg-hij", "bot_name": "Test Bot", **data}, source=BotCreationSource.API, project=self.project)
+
+    def make_elevenlabs_active(self):
+        credentials = Credentials.objects.create(project=self.project, credential_type=Credentials.CredentialTypes.ELEVENLABS)
+        credentials.set_credentials({"api_key": "test-key"})
+        self.project.active_transcription_provider = "elevenlabs"
+        self.project.save()
+
+    def test_platform_defaults_without_active_provider(self):
+        bot, error = self.create_bot()
+        self.assertIsNone(error)
+        self.assertEqual(bot.settings["transcription_settings"], {"meeting_closed_captions": {}})
+
+    def test_active_provider_is_used_when_bot_has_no_transcription_settings(self):
+        self.make_elevenlabs_active()
+        bot, error = self.create_bot()
+        self.assertIsNone(error)
+        self.assertEqual(bot.settings["transcription_settings"], {"elevenlabs": {"model_id": "scribe_v2"}})
+        self.assertEqual(bot.recordings.get().transcription_provider, TranscriptionProviders.ELEVENLABS)
+
+    def test_bot_transcription_settings_override_active_provider(self):
+        self.make_elevenlabs_active()
+        bot, error = self.create_bot(transcription_settings={"meeting_closed_captions": {}})
+        self.assertIsNone(error)
+        self.assertEqual(bot.settings["transcription_settings"], {"meeting_closed_captions": {}})
+
+    def test_active_provider_without_credentials_falls_back_to_platform_default(self):
+        self.project.active_transcription_provider = "elevenlabs"
+        self.project.save()
+        bot, error = self.create_bot()
+        self.assertIsNone(error)
+        self.assertEqual(bot.settings["transcription_settings"], {"meeting_closed_captions": {}})
+
+
+class TestSetActiveTranscriptionProviderView(TestCase):
+    def setUp(self):
+        organization = Organization.objects.create(name="Test Organization")
+        self.user = User.objects.create_user(username="admin", email="admin@example.com", password="testpassword123", role=UserRole.ADMIN, organization=organization)
+        self.project = Project.objects.create(name="Test Project", organization=organization)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def set_provider(self, provider):
+        return self.client.post(reverse("projects:set-active-transcription-provider", kwargs={"object_id": self.project.object_id}), {"active_transcription_provider": provider})
+
+    def test_sets_provider_with_credentials(self):
+        Credentials.objects.create(project=self.project, credential_type=Credentials.CredentialTypes.ELEVENLABS).set_credentials({"api_key": "test-key"})
+        response = self.set_provider("elevenlabs")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Saved")
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.active_transcription_provider, "elevenlabs")
+
+    def test_rejects_provider_without_credentials(self):
+        response = self.set_provider("elevenlabs")
+        self.assertContains(response, "Add ElevenLabs credentials")
+        self.project.refresh_from_db()
+        self.assertIsNone(self.project.active_transcription_provider)
+
+    def test_clears_provider(self):
+        self.project.active_transcription_provider = "elevenlabs"
+        self.project.save()
+        self.set_provider("")
+        self.project.refresh_from_db()
+        self.assertIsNone(self.project.active_transcription_provider)
+
+    def test_rejects_unknown_provider(self):
+        self.assertEqual(self.set_provider("not_a_provider").status_code, 400)
+
+
 @patch("bots.projects_views.launch_adhoc_bot_from_view")
 class TestCreateBotViewOptions(TestCase):
     def setUp(self):
@@ -189,3 +265,28 @@ class TestCreateBotViewOptions(TestCase):
 
         bot = Bot.objects.get(project=self.project)
         self.assertEqual(bot.settings["transcription_settings"], {"elevenlabs": {"model_id": "scribe_v1", "tag_audio_events": True}})
+
+    def test_metadata_is_saved(self, mock_launch):
+        response = self.post_create_bot({"metadata": '{"customer_id": "abc123"}'})
+        self.assertEqual(response.status_code, 200)
+
+        bot = Bot.objects.get(project=self.project)
+        self.assertEqual(bot.metadata, {"customer_id": "abc123"})
+
+    def test_blank_metadata_is_ignored(self, mock_launch):
+        response = self.post_create_bot({"metadata": "  "})
+        self.assertEqual(response.status_code, 200)
+
+        bot = Bot.objects.get(project=self.project)
+        self.assertIsNone(bot.metadata)
+
+    def test_invalid_metadata_json_is_rejected(self, mock_launch):
+        response = self.post_create_bot({"metadata": "{not json"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Metadata must be valid JSON", response.content.decode())
+        self.assertFalse(Bot.objects.filter(project=self.project).exists())
+
+    def test_metadata_validation_errors_are_returned(self, mock_launch):
+        response = self.post_create_bot({"metadata": '["not", "an", "object"]'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Metadata must be an object", response.content.decode())

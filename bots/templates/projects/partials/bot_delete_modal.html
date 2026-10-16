@@ -1,0 +1,39 @@
+<!-- Delete Bot Modal. Pages that delete several bots add bot_ids inputs to #deleteBotIds before it opens. -->
+<div class="modal fade" id="deleteBotModal" tabindex="-1" aria-labelledby="deleteBotModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{{ delete_bot_form_action }}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <div id="deleteBotIds"></div>
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteBotModalLabel">Delete <span id="deleteBotSubject">this bot</span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="mode" id="deleteBotModeData" value="data" checked>
+                        <label class="form-check-label" for="deleteBotModeData">
+                            <strong>Delete data</strong>
+                            <div class="small text-muted">Deletes recordings, transcripts, participants and debug files. The bot stays in the list as "Data Deleted", with its metadata and event history.</div>
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="mode" id="deleteBotModeRemove" value="remove">
+                        <label class="form-check-label" for="deleteBotModeRemove">
+                            <strong>Remove bot entirely</strong>
+                            <div class="small text-muted">Deletes the data and the bot itself, including its event and webhook history. Billing records are kept.</div>
+                        </label>
+                    </div>
+                    <div class="alert alert-warning small mt-3 mb-0" role="alert">
+                        This can't be undone. Bots that are still running are skipped.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

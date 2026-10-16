@@ -47,8 +47,8 @@
                     <div class="mb-3">
                         <label for="id_transcription_provider" class="form-label">Transcription</label>
                         <select class="form-select" id="id_transcription_provider" name="transcription_provider">
-                            <option value="default" selected>Platform default (Meet / Teams captions, Deepgram for Zoom)</option>
-                            <option value="elevenlabs">ElevenLabs</option>
+                            <option value="default" {% if project.active_transcription_provider != 'elevenlabs' %}selected{% endif %}>Project default ({{ project.active_transcription_provider_label|default:"Meet / Teams captions, Deepgram for Zoom" }})</option>
+                            <option value="elevenlabs" {% if project.active_transcription_provider == 'elevenlabs' %}selected{% endif %}>ElevenLabs</option>
                         </select>
                     </div>
 
@@ -81,6 +81,13 @@
                     </div>
 
                     <div id="formErrors" class="alert alert-danger d-none"></div>
+                    <div class="mb-3">
+                        <label for="id_metadata" class="form-label">Metadata (optional)</label>
+                        <textarea class="form-control font-monospace" id="id_metadata" name="metadata" rows="3" placeholder='{"customer_id": "abc123"}'></textarea>
+                        <div class="invalid-feedback" id="metadataError"></div>
+                        <div class="form-text">A JSON object. It's shown on the bot page and sent with every webhook for this bot as <code>bot_metadata</code>.</div>
+                    </div>
+
                 </form>
                 
                 <div class="card mt-4">
@@ -199,6 +206,24 @@
             const elevenlabsNoVerbatimField = document.getElementById('id_elevenlabs_no_verbatim');
             const elevenlabsTagAudioEventsField = document.getElementById('id_elevenlabs_tag_audio_events');
             const elevenlabsTranscriptionTimingField = document.getElementById('id_elevenlabs_transcription_timing');
+            const metadataField = document.getElementById('id_metadata');
+            const metadataError = document.getElementById('metadataError');
+
+            // Returns the parsed metadata, or undefined if the field is empty or not valid JSON
+            function parseMetadata() {
+                const text = metadataField.value.trim();
+                metadataField.classList.remove('is-invalid');
+                if (!text) {
+                    return undefined;
+                }
+                try {
+                    return JSON.parse(text);
+                } catch (error) {
+                    metadataError.textContent = 'Metadata must be valid JSON, e.g. {"customer_id": "abc123"}';
+                    metadataField.classList.add('is-invalid');
+                    return undefined;
+                }
+            }
 
             // Build the same request body that the dashboard sends to create the bot
             function buildRequestData() {
@@ -228,6 +253,11 @@
                         elevenlabs.transcription_timing = 'after_meeting';
                     }
                     data.transcription_settings = { elevenlabs: elevenlabs };
+                }
+
+                const metadata = parseMetadata();
+                if (metadata !== undefined) {
+                    data.metadata = metadata;
                 }
 
                 return data;
@@ -264,6 +294,7 @@
             // Add event listeners to form fields
             meetingUrlField.addEventListener('input', updateCurlCommand);
             botNameField.addEventListener('input', updateCurlCommand);
+            metadataField.addEventListener('input', updateCurlCommand);
             [recordingFormatField, transcriptionProviderField, elevenlabsModelField, elevenlabsNoVerbatimField, elevenlabsTagAudioEventsField, elevenlabsTranscriptionTimingField, ...additionalFileFields].forEach(field => {
                 field.addEventListener('change', updateCurlCommand);
             });

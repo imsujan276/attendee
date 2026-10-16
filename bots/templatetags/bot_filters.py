@@ -145,3 +145,11 @@ def map_trigger_types(trigger_or_triggers):
             # Convert integer enum value to API code
             api_code = WebhookTriggerTypes.trigger_type_to_api_code(trigger_or_triggers)
             return api_code if api_code is not None else f"unknown_trigger_{trigger_or_triggers}"
+
+
+@register.filter
+def metadata_value(value):
+    """Show string metadata values as they are and any other value as indented JSON."""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, indent=2, default=str)

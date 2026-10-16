@@ -71,6 +71,8 @@
         {% endif %}
     </div>
     
+    {% include 'projects/partials/_messages.html' %}
+
     <!-- Filters Collapsible Panel -->
     {% if filter_params.start_date or filter_params.end_date or filter_params.join_at_start or filter_params.join_at_end or filter_params.ended_at_start or filter_params.ended_at_end or filter_params.states or filter_params.search or filter_params.joined_meeting or filter_params.unexpected_error or filter_params.transcript or filter_params.min_participants or filter_params.min_duration or filter_params.metadata_pairs or bots %}
     <div class="filter-panel mb-3">
@@ -216,11 +218,18 @@
         </div>
     </div>
     {% endif %}
+    <div class="d-none align-items-center gap-2 mb-2" id="bulkActions">
+        <span class="small text-muted" id="bulkSelectedCount"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteBotModal">
+            <i class="bi bi-trash me-1"></i> Delete selected
+        </button>
+    </div>
     <div class="table-responsive" id="botsTable">
         {% if bots %}
             <table class="table">
                 <thead>
                     <tr>
+                        <th style="width: 1%;"><input type="checkbox" class="form-check-input" id="selectAllBots" aria-label="Select all on this page"></th>
                         <th>ID</th>
                         {% if session_type == SessionTypes.BOT %}
                             <th>Name</th>
@@ -245,13 +254,14 @@
                         hx-target="#content"
                         hx-swap="outerHTML"
                         hx-push-url="true">
+                        <td onclick="event.stopPropagation()" style="cursor: default;"><input type="checkbox" class="form-check-input bot-select" value="{{ bot.object_id }}" aria-label="Select {{ bot.object_id }}"></td>
                         <td><small>{{ bot.object_id }}</small></td>
                         {% if session_type == SessionTypes.BOT %}
                             <td><small class="bot-name">{{ bot.name }}</small></td>
                             <td><span class="meeting-url" title="{{ bot.meeting_url }}">{{ bot.meeting_url }}</span></td>
                         {% endif %}
                         <td>
-                            <span class="badge {% if bot.state == BotStates.READY %}bg-warning{% elif bot.state == BotStates.FATAL_ERROR %}bg-danger{% elif bot.state == BotStates.ENDED %}bg-secondary{% else %}bg-success{% endif %}">
+                            <span class="badge {% if bot.state == BotStates.READY %}bg-warning{% elif bot.state == BotStates.FATAL_ERROR %}bg-danger{% elif bot.state == BotStates.ENDED or bot.state == BotStates.DATA_DELETED %}bg-secondary{% else %}bg-success{% endif %}">
                                 {{ bot.get_state_display }}
                                 {% if bot.sub_state %}
                                     - {{ bot.get_sub_state_display }}
@@ -346,8 +356,47 @@
 </div>
 
 {% include 'projects/partials/bot_create_modal.html' %}
+{% url 'projects:bulk-delete-bots' project.object_id as bulk_delete_bots_url %}
+{% include 'projects/partials/bot_delete_modal.html' with delete_bot_form_action=bulk_delete_bots_url %}
 
 <script>
+    // Bulk selection: show the actions bar when bots are selected, and send their IDs with the delete form
+    (function() {
+        const selectAll = document.getElementById('selectAllBots');
+        const checkboxes = Array.from(document.querySelectorAll('.bot-select'));
+        const bulkActions = document.getElementById('bulkActions');
+        const deleteBotModal = document.getElementById('deleteBotModal');
+        if (!selectAll || !bulkActions || !deleteBotModal) {
+            return;
+        }
+
+        function selectedBotIds() {
+            return checkboxes.filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
+        }
+
+        function updateBulkActions() {
+            const count = selectedBotIds().length;
+            bulkActions.classList.toggle('d-none', count === 0);
+            bulkActions.classList.toggle('d-flex', count > 0);
+            document.getElementById('bulkSelectedCount').textContent = `${count} selected`;
+            selectAll.checked = count > 0 && count === checkboxes.length;
+            selectAll.indeterminate = count > 0 && count < checkboxes.length;
+        }
+
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(checkbox => { checkbox.checked = selectAll.checked; });
+            updateBulkActions();
+        });
+        checkboxes.forEach(checkbox => checkbox.addEventListener('change', updateBulkActions));
+
+        deleteBotModal.addEventListener('show.bs.modal', function() {
+            const ids = selectedBotIds();
+            const container = document.getElementById('deleteBotIds');
+            container.replaceChildren(...ids.map(id => Object.assign(document.createElement('input'), { type: 'hidden', name: 'bot_ids', value: id })));
+            document.getElementById('deleteBotSubject').textContent = ids.length === 1 ? '1 bot' : `${ids.length} bots`;
+        });
+    })();
+
     function toggleFilterPanel(event) {
         event?.preventDefault();
         const filterContent = document.querySelector('.filter-content');

@@ -6,6 +6,18 @@ DEBUG = True
 SITE_DOMAIN = "localhost:8000"
 ALLOWED_HOSTS = []
 
+# Keep tests away from the storage a local .env points at (e.g. local_storage/s3). Django file fields use
+# in-memory storage, and direct S3 uploads use the default AWS endpoint, as in CI where tests mock them.
+os.environ.pop("AWS_ENDPOINT_URL", None)
+RECORDING_STORAGE_BACKEND["OPTIONS"].pop("endpoint_url", None)
+STORAGES = {
+    **STORAGES,
+    "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    "recordings": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    "bot_debug_screenshots": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    "audio_chunks": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+}
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",

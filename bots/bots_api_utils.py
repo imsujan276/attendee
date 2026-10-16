@@ -213,6 +213,12 @@ def create_bot(data: dict, source: BotCreationSource, project: Project) -> tuple
     if error:
         return None, error
 
+    # Use the project's active transcription provider if the request doesn't choose one
+    if data.get("transcription_settings") is None:
+        default_transcription_settings = project.default_transcription_settings()
+        if default_transcription_settings:
+            data = {**data, "transcription_settings": default_transcription_settings}
+
     serializer = CreateBotSerializer(data=data)
     if not serializer.is_valid():
         return None, serializer.errors
