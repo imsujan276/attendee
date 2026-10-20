@@ -18,6 +18,10 @@ down: ## Stop the application
 logs: ## View the logs
 	docker compose -f dev.docker-compose.yaml logs -f
 
+.PHONY: tunnel
+tunnel: ## Start a Cloudflare tunnel to the app and point .env at its URL
+	sh scripts/cloudflare_tunnel.sh
+
 .PHONY: migrate
 migrate: ## Run migrations
 	docker compose -f dev.docker-compose.yaml exec attendee-app-local python manage.py migrate
