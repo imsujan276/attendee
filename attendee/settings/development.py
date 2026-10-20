@@ -5,6 +5,8 @@ from .base import *
 DEBUG = True
 SITE_DOMAIN = "localhost:8007"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost").split(",")
+# Lets the dashboard accept form posts through an https tunnel, e.g. https://*.ngrok-free.app
+CSRF_TRUSTED_ORIGINS = ["https://*.ngrok-free.app", "https://*.ngrok-free.dev"]
 
 # Write outgoing emails (e.g. signup confirmations) to files instead of the console
 if os.getenv("EMAIL_FILE_PATH"):

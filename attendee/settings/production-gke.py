@@ -47,6 +47,8 @@ SERVER_EMAIL = os.getenv("SERVER_EMAIL", "noreply@mail.attendee.dev")
 
 # Needed on GKE
 CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "https://*.attendee.dev").split(",")
+if os.getenv("EXTERNAL_WEBHOOK_SITE_DOMAIN"):
+    CSRF_TRUSTED_ORIGINS.append(f"https://{os.getenv('EXTERNAL_WEBHOOK_SITE_DOMAIN')}")
 
 LOGGING = {
     "version": 1,
