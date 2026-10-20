@@ -346,7 +346,15 @@ class GoogleCalendarSyncHandler(CalendarSyncHandler):
             "token": json.dumps({"calendar_id": self.calendar.object_id}),
         }
         logger.info(f"Creating notification channel in Google API for calendar {self.calendar.object_id} with platform_uuid {notification_channel_uuid}.")
-        response = self._make_gcal_request(url, access_token, method="POST", body=body)
+        try:
+            response = self._make_gcal_request(url, access_token, method="POST", body=body)
+        except requests.HTTPError as e:
+            if not self._is_webhook_url_not_https_error(e):
+                raise
+            # Google only delivers push notifications to https addresses. Keep syncing without them;
+            # the scheduler still syncs every calendar at least once every 24 hours.
+            logger.warning(f"Google rejected the notification channel address {body['address']} for calendar {self.calendar.object_id} because it isn't https. Syncing without push notifications. Set SITE_DOMAIN or EXTERNAL_WEBHOOK_SITE_DOMAIN to a public https host to receive them.")
+            return
         logger.info(f"Created notification channel in Google API for calendar {self.calendar.object_id} with platform_uuid {notification_channel_uuid}. Response: {response}")
 
         if response.get("expiration"):
@@ -363,6 +371,14 @@ class GoogleCalendarSyncHandler(CalendarSyncHandler):
             raw=response,
         )
         logger.info(f"Created notification channel in database for calendar {self.calendar.object_id} with platform_uuid {notification_channel_uuid}.")
+
+    @staticmethod
+    def _is_webhook_url_not_https_error(e: requests.HTTPError) -> bool:
+        try:
+            errors = e.response.json().get("error", {}).get("errors", [])
+        except (AttributeError, ValueError):
+            return False
+        return any(error.get("reason") == "push.webhookUrlNotHttps" for error in errors)
 
     def _refresh_notification_channels(self):
         notification_channels = CalendarNotificationChannel.objects.filter(calendar=self.calendar)

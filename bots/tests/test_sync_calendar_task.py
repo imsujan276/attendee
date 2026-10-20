@@ -703,6 +703,42 @@ class TestGoogleCalendarSyncHandler(TestCase):
 
         self.assertIsNone(result)
 
+    def _watch_http_error(self, reason):
+        response = requests.Response()
+        response.status_code = 400
+        response._content = ('{"error": {"errors": [{"domain": "global", "reason": "%s", "message": "WebHook callback must be HTTPS"}], "code": 400}}' % reason).encode()
+        response.headers["content-type"] = "application/json"
+        return requests.HTTPError("400 Client Error: Bad Request for url: https://www.googleapis.com/calendar/v3/calendars/primary/events/watch", response=response)
+
+    @patch("bots.tasks.sync_calendar_task.trigger_webhook")
+    @patch("bots.tasks.sync_calendar_task.GoogleCalendarSyncHandler._list_events")
+    @patch("bots.tasks.sync_calendar_task.GoogleCalendarSyncHandler._get_access_token")
+    @patch("bots.tasks.sync_calendar_task.GoogleCalendarSyncHandler._make_gcal_request")
+    def test_sync_continues_when_notification_address_is_not_https(self, mock_make_gcal_request, mock_get_access_token, mock_list_events, mock_trigger_webhook):
+        """Google rejects plain-http notification addresses; the sync still reads the calendar."""
+        mock_make_gcal_request.side_effect = self._watch_http_error("push.webhookUrlNotHttps")
+        mock_get_access_token.return_value = "mock_token"
+        mock_list_events.return_value = [{"id": "event_1", "start": {"dateTime": "2023-12-01T10:00:00Z"}, "end": {"dateTime": "2023-12-01T11:00:00Z"}, "status": "confirmed"}]
+
+        result = GoogleCalendarSyncHandler(self.calendar.id).sync_events()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["created_count"], 1)
+        self.assertFalse(CalendarNotificationChannel.objects.filter(calendar=self.calendar).exists())
+        self.calendar.refresh_from_db()
+        self.assertEqual(self.calendar.state, CalendarStates.CONNECTED)
+
+    @patch("bots.tasks.sync_calendar_task.GoogleCalendarSyncHandler._get_access_token")
+    @patch("bots.tasks.sync_calendar_task.GoogleCalendarSyncHandler._make_gcal_request")
+    def test_other_notification_channel_errors_are_raised(self, mock_make_gcal_request, mock_get_access_token):
+        mock_make_gcal_request.side_effect = self._watch_http_error("invalidArgument")
+        mock_get_access_token.return_value = "mock_token"
+
+        with self.assertRaises(requests.HTTPError):
+            GoogleCalendarSyncHandler(self.calendar.id)._refresh_notification_channels()
+
+        self.assertFalse(CalendarNotificationChannel.objects.filter(calendar=self.calendar).exists())
+
 
 class TestMicrosoftCalendarSyncHandler(TestCase):
     """Test the MicrosoftCalendarSyncHandler class."""
