@@ -115,6 +115,8 @@ def create_zoom_oauth_connection(data, project):
             zoom_oauth_connection.set_credentials(credentials)
 
             zoom_oauth_connection.account_id = user_info["account_id"]
+            zoom_oauth_connection.user_email = user_info.get("email") or ""
+            zoom_oauth_connection.user_display_name = user_info.get("display_name") or " ".join(filter(None, [user_info.get("first_name"), user_info.get("last_name")]))
             zoom_oauth_connection.metadata = validated_data["metadata"]
 
             # Set the capabilities

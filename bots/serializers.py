@@ -2447,6 +2447,8 @@ class ZoomOAuthConnectionSerializer(serializers.ModelSerializer):
             "zoom_oauth_app_id",
             "user_id",
             "account_id",
+            "user_email",
+            "user_display_name",
             "state",
             "metadata",
             "is_local_recording_token_supported",

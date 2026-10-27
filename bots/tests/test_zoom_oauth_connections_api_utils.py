@@ -57,6 +57,9 @@ class TestCreateZoomOAuthConnection(TestCase):
         self.assertEqual(zoom_oauth_connection.zoom_oauth_app, self.zoom_oauth_app)
         self.assertEqual(zoom_oauth_connection.user_id, "test_user_id_123")
         self.assertEqual(zoom_oauth_connection.account_id, "test_account_id_456")
+        # Without a display name, the first and last name are used
+        self.assertEqual(zoom_oauth_connection.user_email, "test@example.com")
+        self.assertEqual(zoom_oauth_connection.user_display_name, "Test User")
         self.assertEqual(zoom_oauth_connection.state, ZoomOAuthConnectionStates.CONNECTED)
         self.assertEqual(zoom_oauth_connection.metadata, {"department": "engineering", "team": "backend"})
         self.assertTrue(zoom_oauth_connection.is_local_recording_token_supported)

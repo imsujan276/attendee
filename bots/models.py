@@ -351,6 +351,9 @@ class ZoomOAuthConnection(models.Model):
     connection_failure_data = models.JSONField(null=True, default=None)
     user_id = models.CharField(max_length=255)
     account_id = models.CharField(max_length=255)
+    # From the Zoom user's profile when they authorized, so apps can show which account is connected.
+    user_email = models.CharField(max_length=255, blank=True, default="")
+    user_display_name = models.CharField(max_length=255, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
