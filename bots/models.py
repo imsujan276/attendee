@@ -752,6 +752,30 @@ class TranscriptionSettings:
     def gladia_enable_code_switching(self):
         return self._settings.get("gladia", {}).get("enable_code_switching", False)
 
+    def gladia_language_config(self):
+        gladia_settings = self._settings.get("gladia", {})
+        if "language_config" in gladia_settings:
+            return gladia_settings["language_config"]
+        # Deprecated fields, kept so existing callers get the same behavior
+        if self.gladia_enable_code_switching():
+            return {"languages": self.gladia_code_switching_languages() or [], "code_switching": True}
+        return None
+
+    def gladia_model(self):
+        return self._settings.get("gladia", {}).get("model", None)
+
+    def gladia_custom_vocabulary(self):
+        return self._settings.get("gladia", {}).get("custom_vocabulary", None)
+
+    def gladia_custom_vocabulary_config(self):
+        return self._settings.get("gladia", {}).get("custom_vocabulary_config", None)
+
+    def gladia_custom_spelling(self):
+        return self._settings.get("gladia", {}).get("custom_spelling", None)
+
+    def gladia_custom_spelling_config(self):
+        return self._settings.get("gladia", {}).get("custom_spelling_config", None)
+
     def assembly_ai_language_code(self):
         return self._settings.get("assembly_ai", {}).get("language_code", None)
 
@@ -982,9 +1006,10 @@ class Bot(models.Model):
 
         # Delete all utterances and recording files for each recording
         for recording in self.recordings.all():
-            # Delete all audio chunks and utterances first
-            recording.audio_chunks.all().delete()
+            # Delete utterances before audio chunks so the SET_NULL cascade from Utterance.audio_chunk has nothing to update
             recording.utterances.all().delete()
+            # Only load the id, so the audio blobs aren't pulled into memory
+            recording.audio_chunks.only("id").delete()
 
             # Delete the recording file and any additional files made from it
             for recording_file in [recording.file, recording.audio_only_file, recording.video_only_file]:
@@ -1082,6 +1107,9 @@ class Bot(models.Model):
         # The rate is 1 credit per hour
         centicredits_active = hours_active * 100
         return math.ceil(centicredits_active)
+
+    def k8s_pod_cmd(self):
+        return ["python", "manage.py", "run_bot", "--botid", str(self.id)]
 
     def cpu_request(self):
         from bots.meeting_url_utils import meeting_type_from_url
@@ -1218,6 +1246,24 @@ class Bot(models.Model):
             return "screenshare"
         else:
             return None
+
+    def should_launch_bot_pod_with_runner_pool(self):
+        if os.getenv("USE_BOT_RUNNER_POOL", "false") != "true":
+            return False
+        if self.join_at is not None:
+            return False
+        # Runner pods are created with the default spec type, the default BOT_CPU_REQUEST and no
+        # persistent storage, so bots that need anything else must get a dedicated pod.
+        if self.should_launch_webpage_streamer():
+            return False
+        if self.reserve_additional_storage():
+            return False
+        if self.bot_pod_spec_type != BotPodSpecType.DEFAULT:
+            return False
+        default_cpu_request = os.getenv("BOT_CPU_REQUEST", "4") or "4"
+        if self.cpu_request() != default_cpu_request:
+            return False
+        return True
 
     def should_launch_webpage_streamer(self):
         voice_agent_settings = self.settings.get("voice_agent_settings", {}) or {}

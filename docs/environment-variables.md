@@ -187,6 +187,7 @@ This document lists all supported environment variables for the Attendee applica
 | `ELEVENLABS_TRANSCRIPTION_MP3_BITRATE_KBPS` | Integer | `64` | Bitrate of the MP3 sent to ElevenLabs when several utterances are transcribed together (after the meeting, or in an async transcription). Lower bitrates make smaller uploads. |
 | `ELEVENLABS_TRANSCRIPTION_UPLOAD_TIMEOUT_SECONDS` | Float | `120` | How long connecting to ElevenLabs, or any single write while uploading the audio, can stall before the request fails and is retried. |
 | `ELEVENLABS_TRANSCRIPTION_TIMEOUT_SECONDS_PER_AUDIO_SECOND` | Float | `1` | Seconds to wait for ElevenLabs per second of audio, so longer audio gets a longer timeout. The timeout is never more than 55 minutes. |
+| `ENABLE_BOT_WEBSOCKET_PORT_SELECTION_BY_OS` | Boolean | `false` | Let the OS pick the port of the web bot websocket server instead of using a fixed port per platform (with up to 10 retries). Enable it when many bots share a network namespace, e.g. celery workers or `docker-compose-multi-host` with host networking. |
 
 ---
 
