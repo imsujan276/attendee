@@ -92,6 +92,12 @@ class TeamsBotAdapter(WebBotAdapter, TeamsUIMethods):
     def get_websocket_port(self):
         return 8097
 
+    def subclass_specific_bypass_content_security_policy(self):
+        # Teams' connect-src only allows ws://localhost:8097, so on any other port (OS-assigned
+        # with ENABLE_BOT_WEBSOCKET_PORT_SELECTION_BY_OS, or 8098+ when 8097 is taken) the payload
+        # can't reach the websocket server: no chat, captions or per-participant audio.
+        return self.websocket_port != self.get_websocket_port()
+
     def is_sent_video_still_playing(self):
         result = self.driver.execute_script("return window.botOutputManager.isVideoPlaying();")
         logger.info(f"is_sent_video_still_playing result = {result}")

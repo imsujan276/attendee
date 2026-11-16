@@ -689,6 +689,10 @@ class WebBotAdapter(BotAdapter):
     def subclass_specific_chrome_policies(self):
         return {}
 
+    # Whether the page should ignore the meeting site's Content-Security-Policy
+    def subclass_specific_bypass_content_security_policy(self):
+        return False
+
     def write_chrome_policies_file(self):
         # Check if the /etc/.../attendee-chrome-policies.json symlink exists. If not, skip this, we are not running in the docker container.
         if not os.path.islink("/etc/opt/chrome/policies/managed/attendee-chrome-policies.json"):
@@ -882,6 +886,11 @@ class WebBotAdapter(BotAdapter):
 
         # Add the combined script to execute on new document
         self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": combined_code})
+
+        # Set before the meeting page loads, so its Content-Security-Policy can't block the payload's websocket
+        if self.subclass_specific_bypass_content_security_policy():
+            self.driver.execute_cdp_cmd("Page.setBypassCSP", {"enabled": True})
+            logger.info(f"Bypassing the meeting page's Content-Security-Policy (websocket port {self.websocket_port})")
 
     def start_domain_allow_list_listener(self):
         try:

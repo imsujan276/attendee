@@ -40,3 +40,23 @@ class WebsocketPortSelectionTest(SimpleTestCase):
         ports = {self.start_server(port) for _ in range(12)}
         self.assertNotIn(None, ports)
         self.assertEqual(len(ports), 12)
+
+
+class TeamsContentSecurityPolicyBypassTest(SimpleTestCase):
+    """Teams' CSP only lets the page reach ws://localhost:8097."""
+
+    def bypasses(self, websocket_port):
+        from bots.teams_bot_adapter.teams_bot_adapter import TeamsBotAdapter
+
+        adapter = SimpleNamespace(websocket_port=websocket_port, get_websocket_port=lambda: 8097)
+        return TeamsBotAdapter.subclass_specific_bypass_content_security_policy(adapter)
+
+    def test_not_needed_on_the_allowed_port(self):
+        self.assertFalse(self.bypasses(8097))
+
+    def test_needed_on_any_other_port(self):
+        self.assertTrue(self.bypasses(59083))
+        self.assertTrue(self.bypasses(8098))
+
+    def test_other_web_bots_keep_the_page_policy(self):
+        self.assertFalse(WebBotAdapter.subclass_specific_bypass_content_security_policy(SimpleNamespace()))
