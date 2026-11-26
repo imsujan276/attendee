@@ -7,6 +7,9 @@ x-attendee-environment: &attendee-environment
   DJANGO_SETTINGS_MODULE: attendee.settings.production
   LAUNCH_BOT_METHOD: docker-compose-multi-host
   ENABLE_CHROME_SANDBOX: "false"
+  # Inside the container, not the mounted repo folder, which "app" may not be able to write to
+  # (Dokploy's checkout is owned by root). attendee-app fills it each time it starts.
+  STATIC_ROOT: /home/app/staticfiles
 
 x-attendee-service: &attendee-service
   build: ./
@@ -78,8 +81,8 @@ services:
     # Only reachable through nginx on this server
     ports:
       - "127.0.0.1:8007:8000"
-    # Migrates and collects static files into ./staticfiles on start, for hosts that don't run
-    # services/deploy.sh (such as Dokploy). The bind mount above hides the image's own copy.
+    # Migrates and collects static files into STATIC_ROOT on start, so hosts that don't run
+    # services/deploy.sh (such as Dokploy) work too
     command: sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn attendee.wsgi --bind 0.0.0.0:8000 --workers 2"
     entrypoint: []
 
