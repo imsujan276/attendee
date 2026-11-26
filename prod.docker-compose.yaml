@@ -78,7 +78,9 @@ services:
     # Only reachable through nginx on this server
     ports:
       - "127.0.0.1:8007:8000"
-    command: "gunicorn attendee.wsgi --bind 0.0.0.0:8000 --workers 2"
+    # Migrates and collects static files into ./staticfiles on start, for hosts that don't run
+    # services/deploy.sh (such as Dokploy). The bind mount above hides the image's own copy.
+    command: sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn attendee.wsgi --bind 0.0.0.0:8000 --workers 2"
     entrypoint: []
 
   attendee-webpage-streamer:
