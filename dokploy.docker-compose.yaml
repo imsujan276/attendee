@@ -71,15 +71,19 @@ services:
   attendee-scheduler:
     <<: *attendee-service
     command: "python manage.py run_scheduler"
-    entrypoint: []
+    entrypoint: []  # no entrypoint, run the command directly
 
   attendee-app:
     <<: *attendee-service
     # Only reachable through nginx on this server
     ports:
       - 8060
-    command: "gunicorn attendee.wsgi --bind 0.0.0.0:8060 --workers 2"
-    entrypoint: []
+    command: 
+      - "bash"
+      - "-c"
+      - "python manage.py collectstatic --noinput &&"
+      - "python manage.py migrate &&"
+      - "gunicorn attendee.wsgi --bind 0.0.0.0:8060 --workers 2"
 
   attendee-webpage-streamer:
     <<: *attendee-service
