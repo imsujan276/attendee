@@ -78,7 +78,7 @@ services:
     # Only reachable through nginx on this server
     ports:
       - 8060
-    command: "python manage.py migrate && gunicorn attendee.wsgi --bind 0.0.0.0:8060 --workers 2"
+    command: "python manage.py collectstatic --noinput && python manage.py migrate && gunicorn attendee.wsgi --bind 0.0.0.0:8060 --workers 2"
 
   attendee-webpage-streamer:
     <<: *attendee-service
