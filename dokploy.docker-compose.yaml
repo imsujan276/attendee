@@ -1,0 +1,96 @@
+# Production stack for one x86 server, using an external Postgres and Redis and an nginx in front.
+# Clone the repo and run docker compose from its root folder. Has the same services as
+# dev.docker-compose.yaml. Settings for this stack live here. Secrets and settings for this server
+# live in .env, see .env.prod.example.
+
+x-attendee-environment: &attendee-environment
+  DJANGO_SETTINGS_MODULE: attendee.settings.production
+  LAUNCH_BOT_METHOD: docker-compose-multi-host
+  ENABLE_CHROME_SANDBOX: "false"
+
+x-attendee-service: &attendee-service
+  build: ./
+  # Built here, not in a registry, so compose should never try to pull it
+  pull_policy: never
+  image: &attendee-image attendee:latest
+  volumes:
+    - .:/attendee
+  networks:
+    - attendee_network
+  env_file:
+    - .env
+  environment: *attendee-environment
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 50m
+      max-file: "5"
+
+# For services that start or remove bot containers. The image runs as "app"; the Docker socket
+# is only open to the host's docker group.
+x-docker-access: &docker-access
+  volumes:
+    - .:/attendee
+    - /var/run/docker.sock:/var/run/docker.sock
+  group_add:
+    - "${DOCKER_GID:?}"
+
+services:
+  attendee-worker:
+    <<: *attendee-service
+    command: "celery -A attendee worker -c 2 -l INFO"
+
+  # Starts each bot in its own container (bot-<id>-<object_id>), which is removed when the bot
+  # ends, so a crashed or stuck bot can't leave Chrome running. Bot containers copy this
+  # service's environment and use host networking, so POSTGRES_HOST and REDIS_URL must be
+  # reachable from the host.
+  attendee-bot-launcher:
+    <<: [*docker-access, *attendee-service]
+    environment:
+      <<: *attendee-environment
+      # Bots share the host network, so each one picks a free websocket port
+      ENABLE_BOT_WEBSOCKET_PORT_SELECTION_BY_OS: "true"
+      BOT_CONTAINER_IMAGE: *attendee-image
+      # This folder on the host, mounted into each bot container
+      BOT_HOST_CODE_PATH: ${PWD}
+      BOT_MEMORY_LIMIT: 2g
+      # 100000 is one core
+      BOT_CPU_QUOTA: 100000
+      BOT_MAX_SIMULTANEOUS_BOTS: 2
+    # 1 keeps launches from slipping past BOT_MAX_SIMULTANEOUS_BOTS
+    command: "celery -A attendee worker -Q bot_launcher_vm -c 1 -l INFO"
+    entrypoint: []
+
+  # Ends bots that stopped sending heartbeats or never launched, and removes their containers
+  attendee-bot-cleanup:
+    <<: [*docker-access, *attendee-service]
+    command: sh -c "while true; do python manage.py clean_up_bots_with_heartbeat_timeout_or_that_never_launched; sleep 300; done"
+    entrypoint: []
+
+  attendee-scheduler:
+    <<: *attendee-service
+    command: "python manage.py run_scheduler"
+    entrypoint: []
+
+  attendee-app:
+    <<: *attendee-service
+    # Only reachable through nginx on this server
+    ports:
+      - 8060
+    command: "gunicorn attendee.wsgi --bind 0.0.0.0:8060 --workers 2"
+    entrypoint: []
+
+  attendee-webpage-streamer:
+    <<: *attendee-service
+    ports:
+      - 8061
+    command: "python bots/webpage_streamer/run_webpage_streamer.py"
+    security_opt:
+      - seccomp=./bots/web_bot_adapter/chrome_seccomp.json
+    profiles:
+      - webpage-streamer
+
+networks:
+  attendee_network:
+    driver: bridge
