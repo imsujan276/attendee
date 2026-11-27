@@ -20,6 +20,7 @@ x-attendee-service: &attendee-service
     - .:/attendee
   networks:
     - dokploy-network
+    - attendee_network
   env_file:
     - .env
   environment: *attendee-environment
@@ -96,3 +97,5 @@ services:
 networks:
   dokploy-network:
     external: true
+  attendee_network:
+    driver: bridge
