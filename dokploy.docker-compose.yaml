@@ -19,7 +19,7 @@ x-attendee-service: &attendee-service
   volumes:
     - .:/attendee
   networks:
-    - dokploy_network
+    - dokploy-network
   env_file:
     - .env
   environment: *attendee-environment
@@ -94,5 +94,5 @@ services:
       - webpage-streamer
 
 networks:
-  dokploy_network:
+  dokploy-network:
     external: true
